@@ -23,17 +23,17 @@ public:
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
         auto bounds = getLocalBounds().toFloat().reduced (6.0f);
-        auto pad = bounds.removeFromTop (bounds.getHeight() - 28.0f);
+        auto padArea = bounds.removeFromTop (bounds.getHeight() - 28.0f);
 
         // Glow while armed, brighter on each tap.
         g.setColour (colours::accent.withAlpha (0.12f + 0.35f * flashAmount));
-        g.fillRoundedRectangle (pad.expanded (6.0f), 22.0f);
+        g.fillRoundedRectangle (padArea.expanded (6.0f), 22.0f);
         g.setColour (colours::accentDark.interpolatedWith (colours::accent, 0.25f * flashAmount + (down ? 0.15f : highlighted ? 0.05f : 0.0f)));
-        g.fillRoundedRectangle (pad, 18.0f);
+        g.fillRoundedRectangle (padArea, 18.0f);
         g.setColour (active ? colours::accent : colours::border);
-        g.drawRoundedRectangle (pad, 18.0f, 2.0f);
+        g.drawRoundedRectangle (padArea, 18.0f, 2.0f);
 
-        auto content = pad.reduced (12.0f);
+        auto content = padArea.reduced (12.0f);
         g.setColour (active ? colours::accent : colours::muted);
         g.setFont (uiFont (13.0f, true).withExtraKerningFactor (0.12f));
         g.drawText (countdown.isNotEmpty() ? countdown : topLabel, content.removeFromTop (content.getHeight() * 0.28f), juce::Justification::centredBottom);
@@ -62,7 +62,7 @@ public:
         g.setFont (uiFont (12.5f));
         g.drawText (rest, hint.withTrimmedLeft (8.0f), juce::Justification::centredLeft);
 
-        // Beat dots under the pad
+        // Beat dots under the padArea
         const float dotsWidth = beatsPerBar * 24.0f;
         auto dots = bounds.withSizeKeepingCentre (dotsWidth, 14.0f).withY (bounds.getCentreY() - 7.0f);
         const int currentBeat = beatPhase >= 0.0f ? (int) beatPhase : -1;

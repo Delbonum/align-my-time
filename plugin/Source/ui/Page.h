@@ -23,19 +23,7 @@ public:
                 return;
             }
 
-            // Without ARA this throws work away: ask first.
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions()
-                                              .withIconType (juce::MessageBoxIconType::QuestionIcon)
-                                              .withTitle (de ("Aufnahme verwerfen?"))
-                                              .withMessage (de ("Die aufgenommene Spur und alle Marker werden gelöscht. "
-                                                                "Danach die Spur in Cubase erneut abspielen."))
-                                              .withButton ("Verwerfen")
-                                              .withButton ("Abbrechen")
-                                              .withAssociatedComponent (this),
-                                          [safe = juce::Component::SafePointer<SourceStrip> (this)] (int result) {
-                                              if (safe != nullptr && result == 1)
-                                                  safe->processor.discardRecording();
-                                          });
+            confirmDiscard();
         };
         addAndMakeVisible (reload);
     }
@@ -91,7 +79,26 @@ public:
         repaint();
     }
 
+
 private:
+    /** Without ARA, discarding throws work away: ask first. */
+    void confirmDiscard()
+    {
+        juce::Component::SafePointer<SourceStrip> safe (this);
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                          .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                          .withTitle (de ("Aufnahme verwerfen?"))
+                                          .withMessage (de ("Die aufgenommene Spur und alle Marker werden gelöscht. "
+                                                            "Danach die Spur in Cubase erneut abspielen."))
+                                          .withButton ("Verwerfen")
+                                          .withButton ("Abbrechen")
+                                          .withAssociatedComponent (this),
+                                      [safe] (int result) {
+                                          if (safe != nullptr && result == 1)
+                                              safe->processor.discardRecording();
+                                      });
+    }
+
     AlignMyTimeProcessor& processor;
     juce::TextButton reload;
 };
