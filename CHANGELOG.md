@@ -3,6 +3,11 @@
 Versionen nach [Semantic Versioning](https://semver.org/lang/de/): **MAJOR.MINOR.PATCH**.
 PATCH = Fehlerbehebungen, MINOR = neue Funktionen, MAJOR = inkompatible Änderungen (z. B. gespeicherte Projekte).
 
+## 1.1.1 – 2026-10-01
+
+### Geändert
+- Neues Programm-Icon (Standalone-App unter Windows/macOS) und dasselbe Logo oben links im Plugin-Fenster.
+
 ## 1.1.0 – 2026-10-01
 
 ### Neu

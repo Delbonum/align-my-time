@@ -8,6 +8,7 @@
 #include "PluginProcessor.h"
 
 #include <amt/OnsetDetector.h>
+#include <AlignMyTimeAssets.h>
 
 #include <cstdio>
 #include <random>
@@ -368,6 +369,13 @@ int main (int argc, char** argv)
         }
         check (tr ("Abspielen") == "Abspielen", "German texts back after switching the language");
         wavFile.deleteFile();
+    }
+
+    std::printf ("9. Icon\n");
+    {
+        const auto icon = juce::ImageCache::getFromMemory (AlignMyTimeAssets::icon256_png, AlignMyTimeAssets::icon256_pngSize);
+        check (icon.isValid() && icon.getWidth() == 256 && icon.hasAlphaChannel(), "app icon embedded (256 px, transparent corners)");
+        check (versionString() == "1.1.1", "version shown in the credits is the project version");
     }
 
     std::printf ("\n%s\n", failures == 0 ? "ALL OK" : "FAILURES");

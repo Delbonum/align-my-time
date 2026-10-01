@@ -39,6 +39,8 @@ juce_add_plugin(AlignMyTime
     ARA_DOCUMENT_ARCHIVE_ID "\"com.alignmytime.plugin.aradocumentarchive.1\""
     ARA_CONTENT_TYPES 0
     ARA_TRANSFORMATION_FLAGS 0
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
+    ICON_SMALL "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon-256.png"
     VST3_CATEGORIES Fx Tools
     COPY_PLUGIN_AFTER_BUILD FALSE)
 
@@ -63,6 +65,12 @@ target_sources(AlignMyTime PRIVATE
     Source/ui/TempoLane.cpp
     Source/ui/WaveformView.cpp)
 
+# The icon also serves as the logo in the editor's header.
+juce_add_binary_data(AlignMyTimeAssets
+    HEADER_NAME AlignMyTimeAssets.h
+    NAMESPACE AlignMyTimeAssets
+    SOURCES Resources/icon-256.png)
+
 target_include_directories(AlignMyTime PRIVATE Source)
 
 if(MSVC)
@@ -80,6 +88,7 @@ target_compile_definitions(AlignMyTime PUBLIC
 target_link_libraries(AlignMyTime
     PRIVATE
         amt_core
+        AlignMyTimeAssets
         juce::juce_audio_utils
         juce::juce_audio_formats
         juce::juce_dsp
@@ -95,6 +104,6 @@ if(AMT_BUILD_TESTS)
         ${juce_SOURCE_DIR}/modules/juce_audio_plugin_client/juce_audio_plugin_client_ARA.cpp)
     target_include_directories(AlignMyTimeSmokeTest PRIVATE Source $<TARGET_PROPERTY:AlignMyTime,INCLUDE_DIRECTORIES>)
     target_compile_definitions(AlignMyTimeSmokeTest PRIVATE $<TARGET_PROPERTY:AlignMyTime,COMPILE_DEFINITIONS>)
-    target_link_libraries(AlignMyTimeSmokeTest PRIVATE AlignMyTime amt_core)
+    target_link_libraries(AlignMyTimeSmokeTest PRIVATE AlignMyTime amt_core AlignMyTimeAssets)
     add_test(NAME plugin_smoke_test COMMAND AlignMyTimeSmokeTest)
 endif()

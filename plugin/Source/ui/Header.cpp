@@ -1,6 +1,8 @@
 #include "Header.h"
 #include "TempoEditor.h"
 
+#include <AlignMyTimeAssets.h>
+
 namespace amt::plugin::ui
 {
 
@@ -157,16 +159,10 @@ void Header::paint (juce::Graphics& g)
     g.setColour (colours::border);
     g.fillRect (getLocalBounds().removeFromBottom (1));
 
-    // Logo: four tap strokes
-    auto logo = juce::Rectangle<float> (20.0f, (getHeight() - 28) * 0.5f, 28.0f, 28.0f);
-    g.setColour (colours::panel2);
-    g.fillRoundedRectangle (logo, 7.0f);
-    g.setColour (colours::border);
-    g.drawRoundedRectangle (logo, 7.0f, 1.0f);
-    g.setColour (colours::accent);
-    const float xs[] = { 7, 12, 17, 22 }, tops[] = { 9, 7, 9, 11 }, bottoms[] = { 19, 21, 19, 17 };
-    for (int i = 0; i < 4; ++i)
-        g.drawLine (logo.getX() + xs[i], logo.getY() + tops[i], logo.getX() + xs[i], logo.getY() + bottoms[i], 2.2f);
+    // Logo = the app icon
+    static const auto icon = juce::ImageCache::getFromMemory (AlignMyTimeAssets::icon256_png, AlignMyTimeAssets::icon256_pngSize);
+    const auto logo = juce::Rectangle<float> (20.0f, (getHeight() - 30) * 0.5f, 30.0f, 30.0f);
+    g.drawImage (icon, logo, juce::RectanglePlacement::centred);
 
     g.setColour (colours::text);
     g.setFont (uiFont (16.0f, true));

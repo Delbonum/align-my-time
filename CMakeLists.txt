@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 # Semantic versioning: MAJOR.MINOR.PATCH, bumped with every change (see CHANGELOG.md)
-project(AlignMyTime VERSION 1.1.0 LANGUAGES C CXX)
+project(AlignMyTime VERSION 1.1.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
