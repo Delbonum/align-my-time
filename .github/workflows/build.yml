@@ -1,0 +1,57 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows (VST3)
+            os: windows-latest
+            configure: ""
+          - name: macOS (VST3 + AU, universal)
+            os: macos-latest
+            configure: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          - name: Linux (VST3)
+            os: ubuntu-24.04
+            configure: -G Ninja
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxcomposite-dev libxext-dev libfreetype-dev libfontconfig1-dev xvfb
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.configure }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Core tests
+        run: ctest --test-dir build -C Release -R amt_core_tests --output-on-failure
+
+      - name: End-to-end test (headless)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ctest --test-dir build -C Release -R plugin_smoke_test --output-on-failure
+
+      - name: Upload plug-in
+        uses: actions/upload-artifact@v4
+        with:
+          name: Align-my-Time-${{ runner.os }}
+          path: |
+            build/plugin/AlignMyTime_artefacts/Release/VST3
+            build/plugin/AlignMyTime_artefacts/Release/AU
+            build/plugin/AlignMyTime_artefacts/Release/Standalone
+          if-no-files-found: error
