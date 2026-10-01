@@ -87,23 +87,31 @@ void AlignMyTimeEditor::buildUi()
 
 void AlignMyTimeEditor::showSettings()
 {
-    settings = std::make_unique<ui::SettingsPanel> (
-        processor,
-        [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<AlignMyTimeEditor> (this)] {
-                     if (safe != nullptr)
-                     {
-                         safe->buildUi();
-                         safe->showSettings(); // stay in the settings, now in the new language
-                     }
-                 }); },
-        [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<AlignMyTimeEditor> (this)] {
-                     if (safe != nullptr)
-                     {
-                         safe->settings.reset();
-                         safe->grabKeyboardFocus();
-                         safe->repaint();
-                     }
-                 }); });
+    // Captured outside the lambdas: MSVC resolves 'this' inside nested init-captures wrongly.
+    juce::Component::SafePointer<AlignMyTimeEditor> safe (this);
+
+    auto languageChanged = [safe] {
+        juce::MessageManager::callAsync ([safe] {
+            if (safe != nullptr)
+            {
+                safe->buildUi();
+                safe->showSettings(); // stay in the settings, now in the new language
+            }
+        });
+    };
+
+    auto closed = [safe] {
+        juce::MessageManager::callAsync ([safe] {
+            if (safe != nullptr)
+            {
+                safe->settings.reset();
+                safe->grabKeyboardFocus();
+                safe->repaint();
+            }
+        });
+    };
+
+    settings = std::make_unique<ui::SettingsPanel> (processor, std::move (languageChanged), std::move (closed));
     addAndMakeVisible (*settings);
     settings->setBounds (getLocalBounds());
     settings->grabKeyboardFocus();
