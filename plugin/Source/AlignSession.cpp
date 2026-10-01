@@ -81,25 +81,47 @@ void AlignSession::setSource (std::shared_ptr<const AudioClip> clip, const juce:
         startRender();
 }
 
-void AlignSession::setProjectTempo (const TempoMap& tempo)
+namespace
 {
-    const auto& a = tempo.points();
-    const auto& b = projectTempo.points();
-    const bool sameTempo = a.size() == b.size()
-                           && std::equal (a.begin(), a.end(), b.begin(), [] (const TempoPoint& x, const TempoPoint& y) {
-                                  return std::abs (x.seconds - y.seconds) < 1.0e-9 && std::abs (x.quarters - y.quarters) < 1.0e-9;
-                              });
-    const auto& sa = tempo.signatures();
-    const auto& sb = projectTempo.signatures();
-    const bool sameSignatures = sa.size() == sb.size()
-                                && std::equal (sa.begin(), sa.end(), sb.begin(), [] (const TimeSignature& x, const TimeSignature& y) {
-                                       return x.numerator == y.numerator && x.denominator == y.denominator
-                                              && std::abs (x.quarters - y.quarters) < 1.0e-9;
-                                   });
-    if (sameTempo && sameSignatures)
+    bool sameTempoMap (const TempoMap& tempo, const TempoMap& other)
+    {
+        const auto& a = tempo.points();
+        const auto& b = other.points();
+        const bool sameTempo = a.size() == b.size()
+                               && std::equal (a.begin(), a.end(), b.begin(), [] (const TempoPoint& x, const TempoPoint& y) {
+                                      return std::abs (x.seconds - y.seconds) < 1.0e-9 && std::abs (x.quarters - y.quarters) < 1.0e-9;
+                                  });
+        const auto& sa = tempo.signatures();
+        const auto& sb = other.signatures();
+        const bool sameSignatures = sa.size() == sb.size()
+                                    && std::equal (sa.begin(), sa.end(), sb.begin(), [] (const TimeSignature& x, const TimeSignature& y) {
+                                           return x.numerator == y.numerator && x.denominator == y.denominator
+                                                  && std::abs (x.quarters - y.quarters) < 1.0e-9;
+                                       });
+        return sameTempo && sameSignatures;
+    }
+}
+
+void AlignSession::setHostTempo (const TempoMap& tempo)
+{
+    if (hostTempo.has_value() && sameTempoMap (tempo, *hostTempo))
         return;
 
-    projectTempo = tempo;
+    hostTempo = tempo;
+    applyTempo();
+}
+
+void AlignSession::applyTempo()
+{
+    auto target = usesManualTempo() ? TempoMap::constant (juce::jlimit (10.0, 999.0, settings.manualBpm), settings.manualNumerator, settings.manualDenominator)
+                                    : *hostTempo;
+    if (sameTempoMap (target, projectTempo))
+    {
+        markChanged (false);
+        return;
+    }
+
+    projectTempo = std::move (target);
     projectTempoShared = std::make_shared<const TempoMap> (projectTempo);
     markChanged();
 }
@@ -284,6 +306,16 @@ void AlignSession::updateSettings (const std::function<void (SessionSettings&)>&
     const bool affectsResult = before.tapUnit != settings.tapUnit || before.method != settings.method
                                || before.quality != settings.quality || ! juce::approximatelyEqual (before.crossfadeMs, settings.crossfadeMs)
                                || before.firstBar != settings.firstBar;
+
+    if (before.manualTempo != settings.manualTempo || ! juce::approximatelyEqual (before.manualBpm, settings.manualBpm)
+        || before.manualNumerator != settings.manualNumerator || before.manualDenominator != settings.manualDenominator)
+    {
+        applyTempo(); // marks the result as changed if the target actually moved
+        if (affectsResult)
+            markChanged (true);
+        return;
+    }
+
     markChanged (affectsResult);
 }
 
@@ -387,7 +419,8 @@ void AlignSession::setReplaceActive (bool active)
 namespace ids
 {
     static const juce::Identifier root ("AlignMyTime"), markers ("Markers"), marker ("Marker"), seconds ("seconds"),
-        tapped ("tapped"), origin ("origin"), snapped ("snapped"), tapMode ("tapMode"), tapUnit ("tapUnit"), clickBlend ("clickBlend"), method ("method"), quality ("quality"),
+        tapped ("tapped"), origin ("origin"), snapped ("snapped"), tapMode ("tapMode"), tapUnit ("tapUnit"), manualTempo ("manualTempo"), manualBpm ("manualBpm"),
+        manualNumerator ("manualNumerator"), manualDenominator ("manualDenominator"), clickBlend ("clickBlend"), method ("method"), quality ("quality"),
         crossfade ("crossfadeMs"), snap ("snapToAttacks"), leadIn ("leadIn"), click ("clickInPreview"), tapOffset ("tapOffsetMs"),
         destination ("destination"), fromStart ("exportFromProjectStart"), muteOriginal ("muteOriginal"), firstBar ("firstBar"),
         trackName ("trackName"), step ("step"), replace ("replaceActive"), version ("version");
@@ -399,6 +432,10 @@ juce::ValueTree AlignSession::toValueTree() const
     tree.setProperty (ids::version, 2, nullptr);
     tree.setProperty (ids::tapUnit, (int) settings.tapUnit, nullptr);
     tree.setProperty (ids::clickBlend, settings.clickBlend, nullptr);
+    tree.setProperty (ids::manualTempo, settings.manualTempo, nullptr);
+    tree.setProperty (ids::manualBpm, settings.manualBpm, nullptr);
+    tree.setProperty (ids::manualNumerator, settings.manualNumerator, nullptr);
+    tree.setProperty (ids::manualDenominator, settings.manualDenominator, nullptr);
     tree.setProperty (ids::method, (int) settings.method, nullptr);
     tree.setProperty (ids::quality, (int) settings.quality, nullptr);
     tree.setProperty (ids::crossfade, settings.crossfadeMs, nullptr);
@@ -437,6 +474,10 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
     const int legacyMode = tree.getProperty (ids::tapMode, 0);
     settings.tapUnit = (TapUnit) (int) tree.getProperty (ids::tapUnit, (int) (legacyMode == 1 ? TapUnit::beat : TapUnit::bar));
     settings.clickBlend = tree.getProperty (ids::clickBlend, 0.5f);
+    settings.manualTempo = tree.getProperty (ids::manualTempo, settings.manualTempo);
+    settings.manualBpm = tree.getProperty (ids::manualBpm, 120.0);
+    settings.manualNumerator = juce::jlimit (1, 32, (int) tree.getProperty (ids::manualNumerator, 4));
+    settings.manualDenominator = juce::jlimit (1, 32, (int) tree.getProperty (ids::manualDenominator, 4));
     settings.method = (AlignMethod) (int) tree.getProperty (ids::method, 0);
     settings.quality = (StretchQuality) (int) tree.getProperty (ids::quality, 0);
     settings.crossfadeMs = tree.getProperty (ids::crossfade, 10.0);
@@ -461,6 +502,7 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
     fixedMarkers = markers;
     liveTaps.clear();
     selectedMarker = -1;
+    applyTempo();
     markChanged();
 
     if (restoredReplaceActive && canAlign())
@@ -470,19 +512,19 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
 //==============================================================================
 juce::String formatBpm (double bpm)
 {
-    return juce::String (bpm, 2).replaceCharacter ('.', ',');
+    return formatNumber (bpm, 2);
 }
 
 juce::String describeTapUnit (TapUnit unit)
 {
     switch (unit)
     {
-        case TapUnit::twoBars:  return "2 Takte";
-        case TapUnit::bar:      return "1 Takt";
-        case TapUnit::halfBar:  return juce::String::fromUTF8 ("\xc2\xbd Takt");
-        case TapUnit::beat:     return juce::String::fromUTF8 ("1 Z\xc3\xa4hlzeit");
+        case TapUnit::twoBars:  return tr ("2 Takte");
+        case TapUnit::bar:      return tr ("1 Takt");
+        case TapUnit::halfBar:  return tr ("½ Takt");
+        case TapUnit::beat:     return tr ("1 Zählzeit");
         case TapUnit::halfBeat:
-        default:                return juce::String::fromUTF8 ("\xc2\xbd Z\xc3\xa4hlzeit");
+        default:                return tr ("½ Zählzeit");
     }
 }
 
@@ -491,15 +533,15 @@ juce::String describeGridPosition (const TempoMap& tempo, TapUnit unit, int firs
     const double q = gridQuarters (tempo, unit, firstBar, index);
     const double bars = tempo.quartersToBars (q);
     const double barStart = std::floor (bars + 1.0e-6);
-    auto text = "Takt " + juce::String ((int) barStart + 1);
+    auto text = tr ("Takt") + " " + juce::String ((int) barStart + 1);
 
     const auto& sig = tempo.signatureAt (q);
     const double beat = (q - tempo.barsToQuarters (barStart)) / sig.quartersPerBeat();
     if (beat > 1.0e-6)
     {
         const bool whole = std::abs (beat - std::round (beat)) < 1.0e-6;
-        text << juce::String::fromUTF8 (", Z\xc3\xa4hlzeit ") << (whole ? juce::String ((int) std::round (beat) + 1)
-                                                                    : juce::String (beat + 1.0, 1).replaceCharacter ('.', ','));
+        text << tr (", Zählzeit ") << (whole ? juce::String ((int) std::round (beat) + 1)
+                                                                    : formatNumber (beat + 1.0, 1));
     }
     return text;
 }
@@ -510,7 +552,7 @@ juce::String formatTime (double seconds)
     seconds = std::abs (seconds);
     const int minutes = (int) (seconds / 60.0);
     const double rest = seconds - minutes * 60.0;
-    return (negative ? "-" : "") + juce::String (minutes) + ":" + juce::String (rest, 1).paddedLeft ('0', 4).replaceCharacter ('.', ',');
+    return (negative ? "-" : "") + juce::String (minutes) + ":" + formatNumber (rest, 1).paddedLeft ('0', 4);
 }
 
 } // namespace amt::plugin

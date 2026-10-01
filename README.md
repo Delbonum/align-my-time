@@ -1,14 +1,18 @@
 # Align my Time
 
-Ein DAW-Plugin (VST3 / AU, mit ARA 2), das eine frei eingespielte Spur aufs Projekttempo bringt, und zwar ohne Warp-Tabellen oder Hitpoint-Dialoge:
+Ein DAW-Plugin (VST3 / AU, mit ARA 2) und eine Standalone-App, die eine frei eingespielte Spur aufs Projekttempo (oder ein frei eingegebenes Tempo) bringt, und zwar ohne Warp-Tabellen oder Hitpoint-Dialoge. Aktuelle Version: siehe [CHANGELOG.md](CHANGELOG.md).
 
-1. **Tappen:** Die ganze Spur einmal anhören und im Takt eine Taste drücken (Leertaste, Mausklick oder MIDI-Fußschalter), auf jede Eins oder auf jede Zählzeit.
+1. **Tappen:** Die ganze Spur einmal anhören und im Takt eine Taste drücken (Leertaste oder eine andere Tap-Taste, Mausklick oder MIDI-Fußschalter), auf jede Eins oder auf jede Zählzeit.
 2. **Prüfen:** Marker kontrollieren und verschieben. Die Tempokurve zeigt Ausreißer. Hier wählst du Time-Stretch oder Schneiden + Crossfade und hörst vorher/nachher an.
 3. **Rendern:** Ergebnis als neue Spur (WAV per Drag & Drop) oder direkt in der Spur ersetzen (nicht-destruktiv).
 
 | 1 · Tappen | 2 · Prüfen | 3 · Rendern |
 |---|---|---|
 | ![Tappen](docs/screenshots/1-tappen.png) | ![Prüfen](docs/screenshots/2-pruefen.png) | ![Rendern](docs/screenshots/3-rendern.png) |
+
+| Standalone (Englisch) | Einstellungen |
+|---|---|
+| ![Standalone](docs/screenshots/4-standalone-englisch.png) | ![Einstellungen](docs/screenshots/5-einstellungen.png) |
 
 Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
 
@@ -21,7 +25,17 @@ Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
    - *Als neue Spur*: Das Plugin schreibt eine WAV-Datei nach `Musik/Align my Time/`. Zieh die Kachel auf eine neue Spur. Mit „ab Projektanfang“ gehört die Datei an Takt 1.
    - *In dieser Spur ersetzen*: Die Spur spielt die angepasste Version. Das lässt sich jederzeit zurückschalten. Zum Festschreiben nutzt du Cubases „Render in Place“.
 
+**Leertaste in Cubase:** Cubase startet und stoppt mit der Leertaste auch die Wiedergabe. Damit sie im Plugin nur tappt, legst du in Cubase unter *Studio › Tastaturbefehle › Transport* bei „Start/Stop“ statt der Leertaste **Strg+Leertaste** fest. Strg+Leertaste tappt im Plugin nie. Alternativ wählst du unter ⚙ *Einstellungen* eine andere Tap-Taste (Tab, T oder Eingabe).
+
+**Ziel-Tempo:** Ein Klick auf die Tempo-Anzeige oben rechts öffnet die Einstellung. Dort übernimmst du das Projekttempo oder gibst Tempo und Taktart von Hand ein.
+
+**Audiodatei statt Spur:** Mit „Datei laden …“ oder per Drag & Drop einer Audiodatei ins Fenster arbeitest du mit einer Datei statt mit der Spur. „Zurück zur Spur“ wechselt zurück.
+
 **Ohne ARA** (andere DAWs, oder als normaler Insert) setzt du das Plugin als Insert auf die Spur und spielst das Projekt einmal ab. Das Plugin nimmt die Spur dabei auf, und du kannst im selben Durchgang mittappen. Jedes weitere Abspielen in Schritt 1 ergänzt die Aufnahme. Oben links zeigt „ARA“ oder „Insert“, in welchem Modus das Plugin gerade läuft.
+
+**Standalone-App:** Audiodatei laden (WAV, AIFF, FLAC, Ogg, MP3), Tempo oben rechts eingeben, tappen, prüfen, als WAV speichern. Die Audio-Einstellungen findest du im „Options“-Menü des Fensters.
+
+**Einstellungen** (Zahnrad oben rechts): Sprache (Deutsch/Englisch), Tap-Taste und Credits mit der aktuellen Version.
 
 Die Entscheidungen hinter dem Konzept stehen in [docs/ENTSCHEIDUNGEN.md](docs/ENTSCHEIDUNGEN.md), lokales Weiterentwickeln in [docs/ENTWICKLUNG.md](docs/ENTWICKLUNG.md).
 

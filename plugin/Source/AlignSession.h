@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Localisation.h"
 #include "SharedClip.h"
 
 #include <amt/Alignment.h>
@@ -33,6 +34,10 @@ struct SessionSettings
     bool exportFromProjectStart = true; ///< pad the file so it can be dropped at bar 1
     bool muteOriginal = true;
     std::optional<int> firstBar;        ///< user override of the bar the first marker lands on
+    bool manualTempo = false;           ///< target tempo typed in instead of taken from the host
+    double manualBpm = 120.0;
+    int manualNumerator = 4;
+    int manualDenominator = 4;
     juce::String trackName;
 };
 
@@ -51,8 +56,15 @@ public:
     bool hasSource() const { return source != nullptr && ! source->isEmpty(); }
     const juce::String& getSourceDescription() const { return sourceDescription; }
 
-    void setProjectTempo (const TempoMap& tempo);
+    /** Tempo map reported by the host (ARA or play head). */
+    void setHostTempo (const TempoMap& tempo);
+    bool hasHostTempo() const { return hostTempo.has_value(); }
+    const std::optional<TempoMap>& getHostTempo() const { return hostTempo; }
+
+    /** The target the track is aligned to: the host's tempo map, or the manual tempo
+        (settings.manualTempo, or whenever there is no host tempo, e.g. in the standalone app). */
     const TempoMap& getProjectTempo() const { return projectTempo; }
+    bool usesManualTempo() const { return settings.manualTempo || ! hostTempo.has_value(); }
     std::shared_ptr<const TempoMap> getProjectTempoShared() const { return projectTempoShared; }
 
     //==============================================================================
@@ -125,6 +137,9 @@ private:
     std::unique_ptr<OnsetDetector> detector;
     juce::String sourceDescription;
 
+    void applyTempo();
+
+    std::optional<TempoMap> hostTempo;
     TempoMap projectTempo = TempoMap::constant (120.0);
     std::shared_ptr<const TempoMap> projectTempoShared;
 

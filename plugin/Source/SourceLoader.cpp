@@ -1,4 +1,5 @@
 #include "SourceLoader.h"
+#include "Localisation.h"
 
 #include <cmath>
 
@@ -87,14 +88,14 @@ TrackLoader::TrackLoader (const std::vector<juce::ARAPlaybackRegion*>& playbackR
 
     result.tempo = tempoFromMusicalContext (musicalContext);
 
-    const auto events = juce::String ((int) regions.size()) + (regions.size() == 1 ? " Event" : " Events");
-    result.description = (trackName.isNotEmpty() ? juce::String::fromUTF8 ("Spur \xe2\x80\x9e") + trackName + juce::String::fromUTF8 ("\xe2\x80\x9c") : juce::String ("Spur"))
-                         + juce::String::fromUTF8 (" \xc2\xb7 ") + events
-                         + (regions.size() > 1 ? juce::String (" zu einem zusammengefasst") : juce::String());
+    const auto events = juce::String ((int) regions.size()) + (regions.size() == 1 ? tr (" Event") : tr (" Events"));
+    result.description = (trackName.isNotEmpty() ? tr ("Spur") + utf8 (" „") + trackName + utf8 ("“") : tr ("Spur"))
+                         + utf8 (" · ") + events
+                         + (regions.size() > 1 ? tr (" zu einem zusammengefasst") : juce::String());
 
     if (regions.empty())
     {
-        result.error = playbackRegions.empty() ? "Keine Events gefunden." : "Der Host gibt die Audiodaten (noch) nicht frei.";
+        result.error = playbackRegions.empty() ? tr ("Keine Events gefunden.") : tr ("Der Host gibt die Audiodaten (noch) nicht frei.");
         juce::MessageManager::callAsync ([weak = std::weak_ptr<bool> (alive), this] {
             if (auto a = weak.lock(); a != nullptr && *a)
                 onDone (result);

@@ -1,4 +1,5 @@
 #include "Header.h"
+#include "TempoEditor.h"
 
 namespace amt::plugin::ui
 {
@@ -12,8 +13,8 @@ juce::String describeProjectTempo (const TempoMap& tempo)
         constant = constant && std::abs (tempo.bpmAt (p.seconds) - first) < 0.005;
 
     const auto& sig = tempo.signatures().front();
-    const auto bpmText = constant ? formatBpm (first) + " BPM" : juce::String ("Tempo variabel");
-    return bpmText + juce::String::fromUTF8 (" \xc2\xb7 ") + juce::String (sig.numerator) + "/" + juce::String (sig.denominator)
+    const auto bpmText = constant ? formatBpm (first) + " BPM" : tr ("Tempo variabel");
+    return bpmText + utf8 (" · ") + juce::String (sig.numerator) + "/" + juce::String (sig.denominator)
            + (tempo.signatures().size() > 1 ? juce::String ("+") : juce::String());
 }
 
@@ -70,16 +71,42 @@ private:
 //==============================================================================
 Header::Header (AlignSession& s) : session (s)
 {
-    const juce::StringArray labels { "Tappen", juce::String::fromUTF8 ("Pr\xc3\xbc" "fen"), "Rendern" };
+    const juce::StringArray labels { tr ("Tappen"), tr ("Prüfen"), tr ("Rendern") };
     for (int i = 0; i < 3; ++i)
     {
         auto* b = steps.add (new StepButton (i + 1, labels[i]));
-        b->setTitle (juce::String ("Schritt ") + juce::String (i + 1) + ": " + labels[i]);
+        b->setTitle (tr ("Schritt") + " " + juce::String (i + 1) + ": " + labels[i]);
         b->onClick = [this, i] { session.setStep ((Step) i); };
         addAndMakeVisible (b);
     }
+    settingsButton.getProperties().set ("icon", "gear");
+    setKind (settingsButton, ButtonKind::ghost);
+    settingsButton.setTitle (tr ("Einstellungen"));
+    settingsButton.setTooltip (tr ("Einstellungen & Credits"));
+    settingsButton.setWantsKeyboardFocus (false);
+    settingsButton.onClick = [this] {
+        if (onOpenSettings)
+            onOpenSettings();
+    };
+    addAndMakeVisible (settingsButton);
+
     session.addChangeListener (this);
     update();
+}
+
+void Header::mouseMove (const juce::MouseEvent& e)
+{
+    setMouseCursor (tempoChip.contains (e.getPosition()) ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+}
+
+void Header::mouseUp (const juce::MouseEvent& e)
+{
+    if (! tempoChip.contains (e.getPosition()))
+        return;
+
+    auto editor = std::make_unique<TempoEditor> (session);
+    auto* top = getTopLevelComponent();
+    juce::CallOutBox::launchAsynchronously (std::move (editor), top->getLocalArea (this, tempoChip), top);
 }
 
 Header::~Header()
@@ -102,10 +129,10 @@ void Header::update()
     }
     steps[1]->setEnabled (session.getMarkers().size() >= 2);
     steps[2]->setEnabled (session.canAlign());
-    steps[1]->setTooltip (steps[1]->isEnabled() ? juce::String() : juce::String::fromUTF8 ("Erst mindestens 2 Marker tappen"));
+    steps[1]->setTooltip (steps[1]->isEnabled() ? juce::String() : tr ("Erst mindestens 2 Marker tappen"));
     steps[2]->setTooltip (steps[2]->isEnabled() ? juce::String()
-                                                : session.hasSource() ? juce::String::fromUTF8 ("Erst mindestens 2 Marker tappen")
-                                                                      : juce::String::fromUTF8 ("Die Spur fehlt noch (siehe Quelle)"));
+                                                : session.hasSource() ? tr ("Erst mindestens 2 Marker tappen")
+                                                                      : tr ("Die Spur fehlt noch (siehe Quelle)"));
     repaint();
 }
 
@@ -118,6 +145,8 @@ void Header::resized()
         b->setBounds (middle.removeFromLeft (110));
         middle.removeFromLeft (24);
     }
+    settingsButton.setBounds (area.removeFromRight (36).withSizeKeepingCentre (36, 36));
+    area.removeFromRight (8);
     tempoChip = area.removeFromRight (250).withSizeKeepingCentre (250, 32);
 }
 
@@ -160,7 +189,7 @@ void Header::paint (juce::Graphics& g)
     inner.removeFromLeft (8);
     g.setColour (colours::grid);
     g.setFont (uiFont (12.0f, true));
-    g.drawText ("Projekt", inner.removeFromLeft (52), juce::Justification::centredLeft);
+    g.drawText (session.usesManualTempo() ? tr ("Ziel") : tr ("Projekt"), inner.removeFromLeft (52), juce::Justification::centredLeft);
     g.setColour (juce::Colour (0xffbdebf4));
     g.setFont (monoFont (12.0f, true));
     g.drawText (describeProjectTempo (session.getProjectTempo()), inner, juce::Justification::centredLeft);

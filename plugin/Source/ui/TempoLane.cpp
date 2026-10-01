@@ -32,11 +32,11 @@ void TempoLane::paint (juce::Graphics& g)
 
     g.setColour (colours::muted);
     g.setFont (uiFont (11.5f));
-    g.drawText ("Tempo je Takt", bounds.reduced (10.0f, 5.0f), juce::Justification::topLeft);
+    g.drawText (tr ("Tempo je Takt"), bounds.reduced (10.0f, 5.0f), juce::Justification::topLeft);
 
     if (bpm.empty())
     {
-        g.drawText (de ("Erscheint, sobald mindestens zwei Marker gesetzt sind."), bounds, juce::Justification::centred);
+        g.drawText (tr ("Erscheint, sobald mindestens zwei Marker gesetzt sind."), bounds, juce::Justification::centred);
         return;
     }
 
@@ -72,12 +72,12 @@ void TempoLane::paint (juce::Graphics& g)
     g.setFont (monoFont (11.0f));
     g.setColour (colours::grid);
     const float labelY = juce::jlimit (4.0f, bounds.getHeight() - 18.0f, targetY - 17.0f);
-    g.drawText ("Ziel " + juce::String (target, 1).replaceCharacter ('.', ','), juce::Rectangle<float> (bounds.getRight() - 110.0f, labelY, 100.0f, 14.0f),
+    g.drawText (tr ("Ziel") + " " + formatNumber (target, 1), juce::Rectangle<float> (bounds.getRight() - 110.0f, labelY, 100.0f, 14.0f),
                 juce::Justification::centredRight);
     const bool labelAtTop = labelY < bounds.getCentreY();
     g.setColour (colours::muted);
-    g.drawText (de ("Ø ") + juce::String (average, 1).replaceCharacter ('.', ',') + de (" · ") + juce::String (minimum, 1).replaceCharacter ('.', ',')
-                    + de ("–") + juce::String (maximum, 1).replaceCharacter ('.', ','),
+    g.drawText (utf8 ("Ø ") + formatNumber (average, 1) + utf8 (" · ") + formatNumber (minimum, 1)
+                    + utf8 ("–") + formatNumber (maximum, 1),
                 bounds.reduced (10.0f, 5.0f),
                 labelAtTop ? juce::Justification::bottomRight : juce::Justification::topRight);
 }

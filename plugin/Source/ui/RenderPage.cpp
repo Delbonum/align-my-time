@@ -9,6 +9,7 @@ class RenderPage::DragTile : public juce::Component
 {
 public:
     juce::File file;
+    bool savedOnly = false; // standalone: nothing to drag into
 
     void paint (juce::Graphics& g) override
     {
@@ -27,7 +28,7 @@ public:
         area.removeFromLeft (10);
         g.setColour (colours::text);
         g.setFont (uiFont (13.5f, true));
-        g.drawText (de ("In die DAW ziehen: ") + file.getFileName(), area.removeFromTop (area.getHeight() / 2), juce::Justification::bottomLeft);
+        g.drawText ((savedOnly ? tr ("Gespeichert: ") : tr ("In die DAW ziehen: ")) + file.getFileName(), area.removeFromTop (area.getHeight() / 2), juce::Justification::bottomLeft);
         g.setColour (colours::muted);
         g.setFont (uiFont (12.0f));
         g.drawText (file.getParentDirectory().getFullPathName(), area, juce::Justification::topLeft);
@@ -47,7 +48,7 @@ RenderPage::RenderPage (AlignMyTimeProcessor& p) : Page (p), dragTile (std::make
 {
     before.setWaveColour (colours::wave);
     after.setWaveColour (colours::waveAligned);
-    after.setPlaceholder (de ("Noch nicht berechnet – „Rendern“ erzeugt die angepasste Version."));
+    after.setPlaceholder (tr ("Noch nicht berechnet – „Rendern“ erzeugt die angepasste Version."));
     addAndMakeVisible (before);
     addAndMakeVisible (after);
 
@@ -56,9 +57,18 @@ RenderPage::RenderPage (AlignMyTimeProcessor& p) : Page (p), dragTile (std::make
     addAndMakeVisible (newTrackCard);
     addAndMakeVisible (replaceCard);
 
+    // Standalone: there is no track to replace or drag into; the result is simply a file.
+    if (processor.isStandalone())
+    {
+        newTrackCard.setText (tr ("Als Datei speichern"), tr ("Schreibt eine WAV-Datei (24 bit) in den Ordner „Musik/Align my Time“."));
+        replaceCard.setVisible (false);
+        dragTile->savedOnly = true;
+        session.updateSettings ([] (SessionSettings& s) { s.destination = Destination::newTrack; s.exportFromProjectStart = false; });
+    }
+
     trackName.setFont (uiFont (13.5f));
     trackName.setIndents (12, 10);
-    trackName.setTitle ("Spurname");
+    trackName.setTitle (tr ("Spurname"));
     trackName.onTextChange = [this] {
         const auto text = trackName.getText();
         session.updateSettings ([text] (SessionSettings& s) { s.trackName = text; });
@@ -68,20 +78,21 @@ RenderPage::RenderPage (AlignMyTimeProcessor& p) : Page (p), dragTile (std::make
     fromProjectStart.onClick = [this] {
         session.updateSettings ([this] (SessionSettings& s) { s.exportFromProjectStart = fromProjectStart.getToggleState(); });
     };
-    addAndMakeVisible (fromProjectStart);
+    addChildComponent (fromProjectStart);
+    fromProjectStart.setVisible (! processor.isStandalone());
 
     addChildComponent (*dragTile);
-    configureButton (showInFolder, "Im Ordner zeigen", "folder", ButtonKind::ghost);
+    configureButton (showInFolder, tr ("Im Ordner zeigen"), "folder", ButtonKind::ghost);
     showInFolder.onClick = [this] { exportedFile.revealToUser(); };
     addChildComponent (showInFolder);
 
-    configureButton (back, de ("Zurück"), "arrow-l", ButtonKind::ghost);
+    configureButton (back, tr ("Zurück"), "arrow-l", ButtonKind::ghost);
     back.onClick = [this] {
         processor.stopPreview();
         session.setStep (Step::review);
     };
-    configureButton (listen, de ("A/B vorhören"), "headphones", ButtonKind::ghost);
-    listen.setTooltip (de ("Leertaste: abwechselnd Original und angepasste Version ab dem Anfang"));
+    configureButton (listen, tr ("A/B vorhören"), "headphones", ButtonKind::ghost);
+    listen.setTooltip (tr ("Leertaste: abwechselnd Original und angepasste Version ab dem Anfang"));
     listen.onClick = [this] {
         auto& preview = processor.getPreview();
         if (preview.isPlaying())
@@ -134,7 +145,7 @@ void RenderPage::resized()
 
     auto left = leftArea.withTrimmedTop (22);
     auto cards = left.removeFromTop (104);
-    newTrackCard.setBounds (cards.removeFromLeft (cards.getWidth() / 2 - 6));
+    newTrackCard.setBounds (replaceCard.isVisible() ? cards.removeFromLeft (cards.getWidth() / 2 - 6) : cards);
     cards.removeFromLeft (12);
     replaceCard.setBounds (cards);
     left.removeFromTop (12);
@@ -163,26 +174,26 @@ void RenderPage::paint (juce::Graphics& g)
     const auto& plan = session.getPlan();
     g.setFont (uiFont (12.5f));
     g.setColour (colours::muted);
-    g.drawText (de ("Vorher · getappt, Ø ") + juce::String (plan.averageBpm, 1).replaceCharacter ('.', ',') + " BPM", beforeCaption, juce::Justification::centredLeft);
+    g.drawText (tr ("Vorher · getappt, Ø ") + formatNumber (plan.averageBpm, 1) + " BPM", beforeCaption, juce::Justification::centredLeft);
     g.setColour (colours::grid);
-    g.drawText (de ("│ Projektraster (Takte)"), beforeCaption, juce::Justification::centredRight);
+    g.drawText (tr ("│ Projektraster (Takte)"), beforeCaption, juce::Justification::centredRight);
 
     const auto& settings = session.getSettings();
     const auto method = settings.method == AlignMethod::timeStretch
-                            ? de ("Time-Stretch · ") + juce::StringArray { "Rhythmisch", "Melodisch", "Komplex" }[(int) settings.quality]
-                            : de ("Schneiden + Crossfade · ") + juce::String (juce::roundToInt (settings.crossfadeMs)) + " ms";
+                            ? tr ("Time-Stretch · ") + juce::StringArray { tr ("Rhythmisch"), tr ("Melodisch"), tr ("Komplex") }[(int) settings.quality]
+                            : tr ("Schneiden + Crossfade · ") + juce::String (juce::roundToInt (settings.crossfadeMs)) + " ms";
     g.setColour (colours::muted);
-    g.drawText (de ("Nachher · exakt im Projekttempo, Tonhöhe unverändert")
-                    + (session.getAligned() != nullptr && ! session.isAlignedUpToDate() ? de (" · veraltet, bitte neu rendern") : juce::String()),
+    g.drawText (tr ("Nachher · exakt im Projekttempo, Tonhöhe unverändert")
+                    + (session.getAligned() != nullptr && ! session.isAlignedUpToDate() ? tr (" · veraltet, bitte neu rendern") : juce::String()),
                 afterCaption, juce::Justification::centredLeft);
     g.drawText (method, afterCaption, juce::Justification::centredRight);
 
-    drawSectionLabel (g, leftArea.withHeight (16), de ("Ergebnis landet …"));
-    drawSectionLabel (g, rightArea.withHeight (16), "Optionen");
+    drawSectionLabel (g, leftArea.withHeight (16), tr ("Ergebnis landet …"));
+    drawSectionLabel (g, rightArea.withHeight (16), tr ("Optionen"));
 
     g.setColour (colours::muted);
     g.setFont (uiFont (12.5f));
-    g.drawText ("Spurname", nameLabel, juce::Justification::centredLeft);
+    g.drawText (tr ("Spurname"), nameLabel, juce::Justification::centredLeft);
 
     if (errorText.isNotEmpty())
     {
@@ -204,8 +215,8 @@ void RenderPage::paint (juce::Graphics& g)
     {
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
-        g.drawText (juce::String (juce::roundToInt (clip->sampleRate / 100.0) / 10.0).replaceCharacter ('.', ',') + de (" kHz · 24 bit · ")
-                        + juce::String (clip->numChannels() == 1 ? "Mono" : "Stereo"),
+        g.drawText (formatNumber (clip->sampleRate / 1000.0, 1) + utf8 (" kHz · 24 bit · ")
+                        + juce::String (clip->numChannels() == 1 ? "Mono" : "Stereo") /* same in both languages */,
                     footer.reduced (24, 0).withTrimmedRight (270), juce::Justification::centredRight);
     }
 }
@@ -272,24 +283,24 @@ void RenderPage::refresh()
 
     if (session.isRendering())
     {
-        text = de ("Wird berechnet … ") + juce::String (juce::roundToInt (session.getRenderProgress() * 100.0)) + " %";
+        text = tr ("Wird berechnet … ") + juce::String (juce::roundToInt (session.getRenderProgress() * 100.0)) + " %";
         icon = {};
     }
     else if (settings.destination == Destination::replaceInTrack)
     {
-        text = session.isReplaceActive() && session.isAlignedUpToDate() ? juce::String ("Original wiederherstellen") : juce::String ("In Spur ersetzen");
+        text = session.isReplaceActive() && session.isAlignedUpToDate() ? tr ("Original wiederherstellen") : tr ("In Spur ersetzen");
         icon = session.isReplaceActive() && session.isAlignedUpToDate() ? "undo" : "check";
     }
     else
     {
-        text = "In neue Spur rendern";
+        text = processor.isStandalone() ? tr ("Als Datei exportieren") : tr ("In neue Spur rendern");
     }
 
     configureButton (renderButton, text, icon, ButtonKind::primary);
     renderButton.setEnabled (session.canAlign());
     renderButton.setTooltip (processor.getBlockingReason (true));
     listen.setEnabled (session.getAligned() != nullptr);
-    configureButton (listen, processor.getPreview().isPlaying() ? juce::String ("Stopp") : de ("Anhören"),
+    configureButton (listen, processor.getPreview().isPlaying() ? juce::String ("Stopp") : tr ("Anhören"),
                      processor.getPreview().isPlaying() ? "stop" : "headphones", ButtonKind::ghost);
 
     if (session.isRendering())

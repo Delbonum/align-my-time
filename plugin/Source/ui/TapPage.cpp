@@ -9,7 +9,7 @@ class TapPage::TapPad : public juce::Button
 public:
     TapPad() : juce::Button ("TAP")
     {
-        setTitle ("Tap (Leertaste)");
+        setTitle ("Tap");
         setWantsKeyboardFocus (false);
         setTriggeredOnMouseDown (true); // taps must not wait for mouse-up
     }
@@ -44,8 +44,8 @@ public:
 
         // Key hint
         g.setFont (monoFont (12.5f));
-        const juce::String key ("Leertaste");
-        const juce::String rest = juce::String::fromUTF8 ("oder Klick / MIDI-Fu\xc3\x9fschalter");
+        const juce::String key (describeTapKey (getTapKey()));
+        const juce::String rest = tr ("oder Klick / MIDI-Fußschalter");
         const float keyWidth = (float) juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), key) + 20.0f;
         g.setFont (uiFont (12.5f));
         const float restWidth = (float) juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), rest);
@@ -81,13 +81,13 @@ public:
 TapPage::TapPage (AlignMyTimeProcessor& p) : Page (p), pad (std::make_unique<TapPad>())
 {
     wave.setDimAfterPlayhead (true);
-    wave.setPlaceholder ("Hier erscheint die Spur als ein einziges Event.");
+    wave.setPlaceholder (tr ("Hier erscheint die Spur als ein einziges Event."));
     addAndMakeVisible (wave);
 
     configureButton (rewind, {}, "rewind", ButtonKind::solid);
-    rewind.setTooltip ("Zum Anfang (Stopp)");
+    rewind.setTooltip (tr ("Zum Anfang (Stopp)"));
     rewind.onClick = [this] { processor.stopPreview(); };
-    configureButton (playStop, "Abspielen & tappen", "play", ButtonKind::solid);
+    configureButton (playStop, tr ("Abspielen & tappen"), "play", ButtonKind::solid);
     playStop.onClick = [this] { togglePlayback(); };
     addAndMakeVisible (rewind);
     addAndMakeVisible (playStop);
@@ -103,12 +103,12 @@ TapPage::TapPage (AlignMyTimeProcessor& p) : Page (p), pad (std::make_unique<Tap
     pad->onClick = [this] { tap(); };
     addAndMakeVisible (*pad);
 
-    configureButton (undo, juce::String::fromUTF8 ("Letzten Tap l\xc3\xb6schen"), "undo", ButtonKind::ghost);
+    configureButton (undo, tr ("Letzten Tap löschen"), "undo", ButtonKind::ghost);
     undo.setTooltip ("Backspace");
     undo.onClick = [this] { session.undoLastTap(); };
-    configureButton (clearAll, juce::String::fromUTF8 ("Alle Marker l\xc3\xb6schen"), "trash", ButtonKind::ghost);
+    configureButton (clearAll, tr ("Alle Marker löschen"), "trash", ButtonKind::ghost);
     clearAll.onClick = [this] { session.clearMarkers(); };
-    configureButton (next, juce::String::fromUTF8 ("Weiter: Marker pr\xc3\xbc" "fen"), "arrow-r", ButtonKind::primary, true);
+    configureButton (next, tr ("Weiter: Marker prüfen"), "arrow-r", ButtonKind::primary, true);
     next.onClick = [this] {
         processor.stopPreview();
         session.setStep (Step::review);
@@ -163,8 +163,8 @@ void TapPage::paint (juce::Graphics& g)
 {
     g.fillAll (colours::panel);
 
-    drawSectionLabel (g, leftColumn.withHeight (16), "Wiedergabe");
-    drawSectionLabel (g, mode.getBounds().translated (0, -24).withHeight (16), juce::String::fromUTF8 ("Ich tippe auf \xe2\x80\xa6"));
+    drawSectionLabel (g, leftColumn.withHeight (16), tr ("Wiedergabe"));
+    drawSectionLabel (g, mode.getBounds().translated (0, -24).withHeight (16), tr ("Ich tippe auf …"));
 
     // Time signature under the mode switch
     const auto& tempo = session.getProjectTempo();
@@ -172,13 +172,13 @@ void TapPage::paint (juce::Graphics& g)
     auto sigRow = mode.getBounds().translated (0, 52).withHeight (20);
     g.setColour (colours::muted);
     g.setFont (uiFont (13.0f));
-    g.drawText ("Taktart (vom Projekt)", sigRow, juce::Justification::centredLeft);
+    g.drawText (tr ("Taktart"), sigRow, juce::Justification::centredLeft);
     g.setColour (colours::text);
     g.setFont (monoFont (13.0f, true));
     g.drawText (juce::String (sig.numerator) + "/" + juce::String (sig.denominator), sigRow, juce::Justification::centredRight);
 
     // Live stats
-    drawSectionLabel (g, rightColumn.withHeight (16), "Live");
+    drawSectionLabel (g, rightColumn.withHeight (16), tr ("Live"));
     g.setColour (colours::background);
     g.fillRoundedRectangle (statsBox.toFloat(), 10.0f);
     g.setColour (colours::border);
@@ -191,10 +191,10 @@ void TapPage::paint (juce::Graphics& g)
     auto row = box.removeFromTop (34);
     g.setColour (colours::muted);
     g.setFont (uiFont (12.5f));
-    g.drawText ("Getappt", row, juce::Justification::centredLeft);
+    g.drawText (tr ("Getappt"), row, juce::Justification::centredLeft);
     g.setColour (colours::text);
     g.setFont (monoFont (26.0f, true));
-    g.drawText (hasTempo ? juce::String (plan.averageBpm, 1).replaceCharacter ('.', ',') : juce::String::fromUTF8 ("\xe2\x80\x93"),
+    g.drawText (hasTempo ? formatNumber (plan.averageBpm, 1) : utf8 ("–"),
                 row.withTrimmedRight (34), juce::Justification::centredRight);
     g.setColour (colours::muted);
     g.setFont (monoFont (12.0f));
@@ -203,7 +203,7 @@ void TapPage::paint (juce::Graphics& g)
     row = box.removeFromTop (24);
     g.setColour (colours::muted);
     g.setFont (uiFont (12.5f));
-    g.drawText ("Ziel (Projekt)", row, juce::Justification::centredLeft);
+    g.drawText (tr ("Ziel"), row, juce::Justification::centredLeft);
     g.setColour (colours::grid);
     g.setFont (monoFont (15.0f, true));
     const double targetBpm = tempo.bpmAt (plan.targetSeconds.empty() ? 0.0 : plan.targetSeconds.front());
@@ -223,10 +223,10 @@ void TapPage::paint (juce::Graphics& g)
         g.setFont (monoFont (12.5f));
         g.drawText (value, r, juce::Justification::centredRight);
     };
-    smallRow ("Schwankung", hasTempo ? juce::String::fromUTF8 ("\xc2\xb1 ") + juce::String ((plan.maxBpm - plan.minBpm) * 0.5, 1).replaceCharacter ('.', ',') + " BPM"
-                                     : juce::String::fromUTF8 ("\xe2\x80\x93"));
+    smallRow (tr ("Schwankung"), hasTempo ? utf8 ("± ") + formatNumber ((plan.maxBpm - plan.minBpm) * 0.5, 1) + " BPM"
+                                     : utf8 ("–"));
     const int inserted = session.getNumInsertedMarkers();
-    smallRow ("Marker gesetzt", juce::String ((int) session.getMarkers().size()) + (inserted > 0 ? " (" + juce::String (inserted) + juce::String::fromUTF8 (" erg\xc3\xa4nzt)") : juce::String()));
+    smallRow (tr ("Marker gesetzt"), juce::String ((int) session.getMarkers().size()) + (inserted > 0 ? " (" + juce::String (inserted) + tr (" ergänzt)") : juce::String()));
 
     // Hint
     auto hint = hintBox;
@@ -235,11 +235,13 @@ void TapPage::paint (juce::Graphics& g)
     hint.removeFromLeft (10);
     g.setColour (suggestion.has_value() ? colours::accent : colours::muted);
     g.setFont (uiFont (12.5f));
-    g.drawFittedText (suggestion.has_value()
-                          ? de ("Das getappte Tempo passt nicht zum Projekt. Kein Problem: Im nächsten Schritt kannst du die Taps z. B. als ")
-                                + describeTapUnit (*suggestion) + de (" werten.")
-                          : de ("Einen Schlag verpasst? Einfach weitertippen – Lücken werden ergänzt, und im nächsten Schritt lässt sich jeder Marker korrigieren."),
-                      hint, juce::Justification::topLeft, 4, 1.0f);
+    juce::String hintText = tr ("Einen Schlag verpasst? Einfach weitertippen – Lücken werden ergänzt, und im nächsten Schritt lässt sich jeder Marker korrigieren.");
+    if (suggestion.has_value())
+        hintText = tr ("Das getappte Tempo passt nicht zum Projekt. Kein Problem: Im nächsten Schritt kannst du die Taps z. B. als ")
+                   + describeTapUnit (*suggestion) + tr (" werten.");
+    else if (! processor.isStandalone() && getTapKey() == TapKey::space && juce::PluginHostType().isCubase())
+        hintText = tr ("Stoppt die Leertaste die Wiedergabe? In Cubase Start/Stop auf Strg+Leertaste legen oder in den Einstellungen (Zahnrad oben rechts) eine andere Tap-Taste wählen.");
+    g.drawFittedText (hintText, hint, juce::Justification::topLeft, 4, 1.0f);
 
     paintFooter (g, footer);
     if (! next.isEnabled())
@@ -278,7 +280,7 @@ juce::String TapPage::nextTapLabel() const
 {
     const int count = (int) session.getMarkers().size();
     if (count < 2)
-        return count == 0 ? de ("ERSTER TAP = EINS") : de ("WEITER IM TAKT …");
+        return count == 0 ? tr ("ERSTER TAP = EINS") : tr ("WEITER IM TAKT …");
     return describeGridPosition (session.getProjectTempo(), session.getSettings().tapUnit, session.getPlan().firstBar, count).toUpperCase();
 }
 
@@ -292,13 +294,17 @@ void TapPage::refresh()
 
     if (! session.hasSource())
     {
-        if (processor.usesARA())
-            wave.setPlaceholder (de ("Warte auf die Audiodaten von Cubase …"));
+        if (processor.isUsingAudioFile())
+            wave.setPlaceholder (tr ("Datei wird geladen …"));
+        else if (processor.isStandalone())
+            wave.setPlaceholder (tr ("Lade eine Audiodatei: Button „Datei laden …“ oben rechts oder Datei einfach hierher ziehen."));
+        else if (processor.usesARA())
+            wave.setPlaceholder (withHostName (tr ("Warte auf die Audiodaten von Cubase …")));
         else if (processor.isHostPlaying())
-            wave.setPlaceholder (de ("● Aufnahme läuft – ") + formatTime (position) + de (" – einfach mittappen!"));
+            wave.setPlaceholder (tr ("● Aufnahme läuft – ") + formatTime (position) + tr (" – einfach mittappen!"));
         else
-            wave.setPlaceholder (de ("Starte die Wiedergabe in Cubase: Die Spur wird dabei aufgenommen, und du kannst direkt mittappen. "
-                                     "(Leertaste startet hier Cubase.)"));
+            wave.setPlaceholder (withHostName (tr ("Starte die Wiedergabe in Cubase: Die Spur wird dabei aufgenommen, und du kannst direkt mittappen. "
+                                                   "Alternativ eine Audiodatei laden.")));
         if (running)
             wave.setTimeRange (0.0, juce::jmax (30.0, position + 5.0));
     }
@@ -307,21 +313,25 @@ void TapPage::refresh()
     const bool hostDriven = processor.isHostPlaying() && ! previewing;
     juce::String playText;
     if (previewing)
-        playText = juce::String ("Stopp  ") + formatTime (position);
+        playText = tr ("Stopp") + "  " + formatTime (position);
     else if (hostDriven)
-        playText = de ("Cubase spielt – tappen!");
+        playText = withHostName (tr ("Cubase spielt – tappen!"));
     else if (! session.hasSource())
-        playText = processor.usesARA() ? de ("Spur wird geladen …") : de ("In Cubase abspielen");
+        playText = processor.isStandalone() || processor.isUsingAudioFile() ? tr ("Erst Datei laden")
+                   : processor.usesARA()                                    ? tr ("Spur wird geladen …")
+                                                                            : withHostName (tr ("In Cubase abspielen"));
     else
-        playText = session.getMarkers().empty() ? juce::String ("Abspielen & tappen") : juce::String ("Von vorn neu tappen");
+        playText = session.getMarkers().empty() ? tr ("Abspielen & tappen") : tr ("Von vorn neu tappen");
     configureButton (playStop, playText, previewing ? "stop" : "play", ButtonKind::solid);
 
     pad->active = running;
     const double leadInLeft = preview.leadInRemaining();
-    pad->countdown = previewing && leadInLeft > 0.0 ? "GLEICH GEHT'S LOS  " + juce::String ((int) std::ceil (leadInLeft)) : juce::String();
+    pad->countdown = previewing && leadInLeft > 0.0 ? tr ("GLEICH GEHT'S LOS") + "  " + juce::String ((int) std::ceil (leadInLeft)) : juce::String();
     pad->topLabel = running ? nextTapLabel()
-                    : session.hasSource() ? de ("BEREIT – LEERTASTE STARTET")
-                                          : (processor.usesARA() ? de ("SPUR WIRD GELADEN …") : de ("WIEDERGABE IN CUBASE STARTEN"));
+                    : session.hasSource()      ? tr ("BEREIT – TAP-TASTE STARTET")
+                    : processor.isStandalone() ? tr ("ERST AUDIODATEI LADEN")
+                    : processor.usesARA()      ? tr ("SPUR WIRD GELADEN …")
+                                               : withHostName (tr ("WIEDERGABE IN CUBASE STARTEN"));
 
     // Animate the beat dots from the tapped tempo.
     const auto& markers = session.getMarkers();
@@ -387,15 +397,30 @@ void TapPage::togglePlayback()
 
 bool TapPage::handleKey (const juce::KeyPress& key)
 {
-    if (key == juce::KeyPress::spaceKey)
+    // Ctrl+Space & co. belong to the host (e.g. Cubase's transport moved to Ctrl+Space).
+    if (key.getModifiers().isCtrlDown() || key.getModifiers().isCommandDown())
+        return false;
+
+    if (key.getKeyCode() == tapKeyPress (getTapKey()).getKeyCode())
     {
-        // Nothing to play here yet (insert mode before the first pass): let Cubase have the key,
+        // Nothing to play here yet (insert mode before the first pass): let the host have the key,
         // so the space bar starts the host's playback as usual.
         if (! session.hasSource() && ! processor.isAudioRunning())
             return false;
 
         tap();
         return true;
+    }
+
+    if (key == juce::KeyPress::spaceKey)
+    {
+        // Space is not the tap key: in the standalone app it plays/stops, in a DAW it stays the DAW's.
+        if (processor.isStandalone() && session.hasSource())
+        {
+            togglePlayback();
+            return true;
+        }
+        return false;
     }
     if (key == juce::KeyPress::backspaceKey)
     {

@@ -7,65 +7,88 @@
 namespace amt::plugin::ui
 {
 
-/** "Quelle: Spur „Bass DI“ · 3 Events …" plus a reload button. */
+/** "Quelle: Spur „Bass DI“ · 3 Events …" plus "load file" and reload/discard. */
 class SourceStrip : public juce::Component
 {
 public:
     explicit SourceStrip (AlignMyTimeProcessor& p) : processor (p)
     {
-        reload.setButtonText ("Spur neu laden");
-        reload.getProperties().set ("icon", "refresh");
+        loadFile.setButtonText (tr ("Datei laden …"));
+        loadFile.getProperties().set ("icon", "file");
+        loadFile.setTooltip (tr ("Eine Audiodatei statt der Spur verwenden (auch per Drag & Drop ins Fenster)"));
+        loadFile.setWantsKeyboardFocus (false);
+        loadFile.onClick = [this] { chooseFile(); };
+        addAndMakeVisible (loadFile);
+
         reload.setWantsKeyboardFocus (false);
         reload.onClick = [this] {
-            if (processor.usesARA())
+            if (processor.usesARA() || processor.isUsingAudioFile())
             {
                 processor.reloadTrack();
                 return;
             }
-
             confirmDiscard();
         };
         addAndMakeVisible (reload);
+        update();
     }
 
-    void resized() override { reload.setBounds (getLocalBounds().removeFromRight (170).withSizeKeepingCentre (170, 30)); }
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        if (reload.isVisible())
+        {
+            reload.setBounds (area.removeFromRight (180).withSizeKeepingCentre (180, 30));
+            area.removeFromRight (8);
+        }
+        loadFile.setBounds (area.removeFromRight (150).withSizeKeepingCentre (150, 30));
+    }
 
     void paint (juce::Graphics& g) override
     {
-        auto area = getLocalBounds().withTrimmedRight (180);
+        auto area = getLocalBounds().withRight (loadFile.getX() - 10);
 
-        // Mode chip: how the track gets into the plug-in.
-        const auto mode = processor.usesARA() ? juce::String ("ARA") : juce::String ("Insert");
-        auto chip = area.removeFromLeft (processor.usesARA() ? 44 : 54).withSizeKeepingCentre (processor.usesARA() ? 44 : 54, 22);
+        // Mode chip: where the audio comes from.
+        const auto mode = processor.isUsingAudioFile() || processor.isStandalone() ? tr ("Datei")
+                          : processor.usesARA()                                    ? juce::String ("ARA")
+                                                                                   : juce::String ("Insert");
+        g.setFont (monoFont (11.0f, true));
+        const int chipWidth = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), mode) + 18;
+        auto chip = area.removeFromLeft (chipWidth).withSizeKeepingCentre (chipWidth, 22);
         g.setColour (colours::panel2);
         g.fillRoundedRectangle (chip.toFloat(), 6.0f);
         g.setColour (colours::muted);
-        g.setFont (monoFont (11.0f, true));
         g.drawText (mode, chip, juce::Justification::centred);
         area.removeFromLeft (10);
 
         auto& session = processor.getSession();
         juce::String text;
         if (processor.isLoadingTrack())
-            text = juce::String::fromUTF8 ("Spur wird geladen \xe2\x80\xa6");
+            text = tr ("Spur wird geladen …");
         else if (processor.getLoadError().isNotEmpty())
             text = processor.getLoadError();
         else if (session.hasSource())
         {
             const auto clip = session.getSource();
-            text = session.getSourceDescription() + juce::String::fromUTF8 (" \xc2\xb7 ") + formatTime (clip->startSeconds())
+            // Built at display time, so a language switch applies here too.
+            const auto description = processor.isUsingAudioFile() ? tr ("Datei") + ": " + processor.getAudioFile().getFileName()
+                                     : processor.usesARA()         ? session.getSourceDescription()
+                                                                   : tr ("Aufnahme vom Spureingang");
+            text = description + juce::String::fromUTF8 (" \xc2\xb7 ") + formatTime (clip->startSeconds())
                    + juce::String::fromUTF8 ("\xe2\x80\x93") + formatTime (clip->endSeconds());
         }
+        else if (processor.isStandalone())
+            text = tr ("Lade eine Audiodatei – Button rechts oder einfach ins Fenster ziehen.");
         else if (processor.usesARA())
-            text = de ("Warte auf die Events von Cubase …");
+            text = withHostName (tr ("Warte auf die Events von Cubase …"));
         else if (processor.isHostPlaying())
-            text = de ("● Aufnahme läuft – einfach mittappen");
+            text = tr ("● Aufnahme läuft – einfach mittappen");
         else
-            text = de ("Spiele die Spur in Cubase ab – sie wird dabei aufgenommen.");
+            text = withHostName (tr ("Spiele die Spur in Cubase ab – sie wird dabei aufgenommen."));
 
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
-        g.drawText ("Quelle:", area.removeFromLeft (52), juce::Justification::centredLeft);
+        g.drawText (tr ("Quelle:"), area.removeFromLeft (52), juce::Justification::centredLeft);
         g.setColour (colours::text);
         g.setFont (uiFont (12.5f, true));
         g.drawFittedText (text, area, juce::Justification::centredLeft, 1);
@@ -73,25 +96,48 @@ public:
 
     void update()
     {
-        reload.setButtonText (processor.usesARA() ? juce::String ("Spur neu laden") : de ("Aufnahme verwerfen"));
-        reload.getProperties().set ("icon", processor.usesARA() ? "refresh" : "trash");
-        reload.setVisible (processor.usesARA() || processor.getSession().hasSource());
+        if (processor.isUsingAudioFile() && ! processor.isStandalone())
+        {
+            reload.setButtonText (tr ("Zurück zur Spur"));
+            reload.getProperties().set ("icon", "arrow-l");
+        }
+        else
+        {
+            reload.setButtonText (processor.usesARA() ? tr ("Spur neu laden") : tr ("Aufnahme verwerfen"));
+            reload.getProperties().set ("icon", processor.usesARA() ? "refresh" : "trash");
+        }
+        reload.setVisible (! processor.isStandalone()
+                           && (processor.usesARA() || processor.isUsingAudioFile() || processor.getSession().hasSource()));
+        resized();
         repaint();
     }
 
-
 private:
+    void chooseFile()
+    {
+        chooser = std::make_unique<juce::FileChooser> (tr ("Audiodatei laden"), juce::File(), AlignMyTimeProcessor::audioFileWildcard());
+        juce::Component::SafePointer<SourceStrip> safe (this);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safe] (const juce::FileChooser& fc) {
+                                  if (safe == nullptr)
+                                      return;
+                                  const auto file = fc.getResult();
+                                  if (file.existsAsFile())
+                                      safe->processor.loadAudioFile (file);
+                              });
+    }
+
     /** Without ARA, discarding throws work away: ask first. */
     void confirmDiscard()
     {
         juce::Component::SafePointer<SourceStrip> safe (this);
         juce::AlertWindow::showAsync (juce::MessageBoxOptions()
                                           .withIconType (juce::MessageBoxIconType::QuestionIcon)
-                                          .withTitle (de ("Aufnahme verwerfen?"))
-                                          .withMessage (de ("Die aufgenommene Spur und alle Marker werden gelöscht. "
-                                                            "Danach die Spur in Cubase erneut abspielen."))
-                                          .withButton ("Verwerfen")
-                                          .withButton ("Abbrechen")
+                                          .withTitle (tr ("Aufnahme verwerfen?"))
+                                          .withMessage (withHostName (tr ("Die aufgenommene Spur und alle Marker werden gelöscht. "
+                                                                          "Danach die Spur in Cubase erneut abspielen.")))
+                                          .withButton (tr ("Verwerfen"))
+                                          .withButton (tr ("Abbrechen"))
                                           .withAssociatedComponent (this),
                                       [safe] (int result) {
                                           if (safe != nullptr && result == 1)
@@ -100,7 +146,8 @@ private:
     }
 
     AlignMyTimeProcessor& processor;
-    juce::TextButton reload;
+    juce::TextButton loadFile, reload;
+    std::unique_ptr<juce::FileChooser> chooser;
 };
 
 /** Base for the three step pages. */

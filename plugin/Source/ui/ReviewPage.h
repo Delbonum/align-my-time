@@ -33,16 +33,16 @@ private:
 
     juce::TextButton nudgeLeft, nudgeRight, addMarker, removeMarker, retap, barDown, barUp, unitBigger, unitSmaller;
     juce::TextButton applySuggestion;
-    ToggleRow snap { "An Transienten einrasten" };
+    ToggleRow snap { tr ("An Transienten einrasten") };
 
-    ChoiceCard stretchCard { "Time-Stretch", de ("Jeder Takt wird gedehnt/gestaucht. Tonhöhe bleibt unverändert.") };
-    ChoiceCard sliceCard { "Schneiden + Verschieben", de ("An jedem Marker schneiden, aufs Raster schieben, Übergänge per Crossfade.") };
-    SegmentedControl quality { { "Rhythmisch", "Melodisch", "Komplex" } };
+    ChoiceCard stretchCard { tr ("Time-Stretch"), tr ("Jeder Takt wird gedehnt/gestaucht. Tonhöhe bleibt unverändert.") };
+    ChoiceCard sliceCard { tr ("Schneiden + Verschieben"), tr ("An jedem Marker schneiden, aufs Raster schieben, Übergänge per Crossfade.") };
+    SegmentedControl quality { { tr ("Rhythmisch"), tr ("Melodisch"), tr ("Komplex") } };
     juce::Slider crossfade { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
 
-    SegmentedControl ab { { "Original", "Angepasst" } };
+    SegmentedControl ab { { tr ("Original"), tr ("Angepasst") } };
     juce::TextButton play;
-    ToggleRow click { "Klick im Projekttempo" };
+    ToggleRow click { tr ("Klick im Projekttempo") };
     juce::Slider mix { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
 
     juce::TextButton back, next;

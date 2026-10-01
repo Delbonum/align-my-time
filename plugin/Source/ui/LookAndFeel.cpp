@@ -324,6 +324,8 @@ juce::Path makeIcon (const juce::String& name)
         { "folder", "M3 6Q3 5 4 5H9L11 7H20Q21 7 21 8V18Q21 19 20 19H4Q3 19 3 18Z" },
         { "drag", "M12 3V15M7 10L12 15L17 10M5 19H19" },
         { "record", "M18 12A6 6 0 1 1 6 12A6 6 0 1 1 18 12" },
+        { "gear", "M15 12A3 3 0 1 1 9 12A3 3 0 1 1 15 12M12 2V5M12 19V22M2 12H5M19 12H22M4.9 4.9L7 7M17 17L19.1 19.1M4.9 19.1L7 17M17 7L19.1 4.9" },
+        { "file", "M6 3H14L19 8V21H6ZM14 3V8H19" },
     };
 
     auto it = paths.find (name);

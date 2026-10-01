@@ -6,7 +6,7 @@ namespace amt::plugin::ui
 ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
 {
     wave.setInteractive (true);
-    wave.setTooltip (de ("Marker ziehen zum Verschieben · Doppelklick fügt einen Marker hinzu"));
+    wave.setTooltip (tr ("Marker ziehen zum Verschieben · Doppelklick fügt einen Marker hinzu"));
     wave.onSelectMarker = [this] (int i) { session.selectMarker (i); };
     wave.onMoveMarker = [this] (int i, double t) { session.moveMarker (i, t); };
     wave.onAddMarker = [this] (double t) { session.addMarker (t); };
@@ -14,13 +14,13 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
     addAndMakeVisible (tempoLane);
 
     configureButton (nudgeLeft, {}, "nudge-l", ButtonKind::solid);
-    nudgeLeft.setTooltip (de ("5 ms früher (←)"));
+    nudgeLeft.setTooltip (tr ("5 ms früher (←)"));
     nudgeLeft.onClick = [this] { session.nudgeSelected (-0.005); };
     configureButton (nudgeRight, {}, "nudge-r", ButtonKind::solid);
-    nudgeRight.setTooltip (de ("5 ms später (→)"));
+    nudgeRight.setTooltip (tr ("5 ms später (→)"));
     nudgeRight.onClick = [this] { session.nudgeSelected (0.005); };
-    configureButton (addMarker, "Marker", "plus", ButtonKind::ghost);
-    addMarker.setTooltip (de ("Fügt mitten im ausgewählten Takt einen Marker ein (oder Doppelklick in die Wellenform)"));
+    configureButton (addMarker, tr ("Marker"), "plus", ButtonKind::ghost);
+    addMarker.setTooltip (tr ("Fügt mitten im ausgewählten Takt einen Marker ein (oder Doppelklick in die Wellenform)"));
     addMarker.onClick = [this] {
         const auto& markers = session.getMarkers();
         const int sel = session.getSelectedMarker();
@@ -29,22 +29,22 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
         else if (! markers.empty())
             session.addMarker (markers.back().seconds + 1.0);
     };
-    configureButton (removeMarker, de ("Löschen"), "trash", ButtonKind::ghost);
+    configureButton (removeMarker, tr ("Löschen"), "trash", ButtonKind::ghost);
     removeMarker.onClick = [this] { session.removeSelected(); };
-    configureButton (retap, "Ab hier neu tappen", "refresh", ButtonKind::ghost);
+    configureButton (retap, tr ("Ab hier neu tappen"), "refresh", ButtonKind::ghost);
     retap.onClick = [this] {
         const int sel = session.getSelectedMarker();
         if (sel >= 0 && onRetapFrom)
             onRetapFrom (session.getMarkers()[(size_t) sel].seconds);
     };
     configureButton (barDown, {}, "nudge-l", ButtonKind::ghost);
-    barDown.setTooltip (de ("Erster Marker einen Takt früher"));
+    barDown.setTooltip (tr ("Erster Marker einen Takt früher"));
     barDown.onClick = [this] {
         const int bar = session.getPlan().firstBar;
         session.updateSettings ([bar] (SessionSettings& s) { s.firstBar = bar - 1; });
     };
     configureButton (barUp, {}, "nudge-r", ButtonKind::ghost);
-    barUp.setTooltip (de ("Erster Marker einen Takt später"));
+    barUp.setTooltip (tr ("Erster Marker einen Takt später"));
     barUp.onClick = [this] {
         const int bar = session.getPlan().firstBar;
         session.updateSettings ([bar] (SessionSettings& s) { s.firstBar = bar + 1; });
@@ -53,10 +53,10 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
 
     // How far apart the taps are on the grid: fixes "I tapped on 1 and 3" without re-tapping.
     configureButton (unitBigger, {}, "nudge-l", ButtonKind::ghost);
-    unitBigger.setTooltip (de ("Größerer Abstand (z. B. 2 Takte)"));
+    unitBigger.setTooltip (tr ("Größerer Abstand (z. B. 2 Takte)"));
     unitBigger.onClick = [this] { stepUnit (-1); };
     configureButton (unitSmaller, {}, "nudge-r", ButtonKind::ghost);
-    unitSmaller.setTooltip (de ("Kleinerer Abstand (z. B. ½ Takt, wenn du auf 1 und 3 getippt hast)"));
+    unitSmaller.setTooltip (tr ("Kleinerer Abstand (z. B. ½ Takt, wenn du auf 1 und 3 getippt hast)"));
     unitSmaller.onClick = [this] { stepUnit (1); };
 
     configureButton (applySuggestion, {}, "check", ButtonKind::primary);
@@ -83,7 +83,7 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
     crossfade.setRange (2.0, 50.0, 1.0);
     crossfade.setTextValueSuffix (" ms");
     crossfade.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 24);
-    crossfade.setTitle ("Crossfade");
+    crossfade.setTitle (tr ("Crossfade"));
     crossfade.onValueChange = [this] {
         const double v = crossfade.getValue();
         session.updateSettings ([v] (SessionSettings& s) { s.crossfadeMs = v; });
@@ -95,15 +95,15 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
             startPreviewNow();
     };
     addAndMakeVisible (ab);
-    configureButton (play, "Abspielen", "play", ButtonKind::solid);
+    configureButton (play, tr ("Abspielen"), "play", ButtonKind::solid);
     play.onClick = [this] { togglePreview(); };
     addAndMakeVisible (play);
     click.onClick = [this] { session.updateSettings ([this] (SessionSettings& s) { s.clickInPreview = click.getToggleState(); }); };
     addAndMakeVisible (click);
 
     mix.setRange (0.0, 1.0, 0.01);
-    mix.setTitle ("Mix Spur / Klick");
-    mix.setTooltip (de ("Lautstärkeverhältnis beim Vorhören: links nur Spur, Mitte beides voll, rechts nur Klick"));
+    mix.setTitle (tr ("Mix Spur / Klick"));
+    mix.setTooltip (tr ("Lautstärkeverhältnis beim Vorhören: links nur Spur, Mitte beides voll, rechts nur Klick"));
     mix.setDoubleClickReturnValue (true, 0.5);
     mix.onValueChange = [this] {
         const float v = (float) mix.getValue();
@@ -112,12 +112,12 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
     };
     addAndMakeVisible (mix);
 
-    configureButton (back, de ("Zurück"), "arrow-l", ButtonKind::ghost);
+    configureButton (back, tr ("Zurück"), "arrow-l", ButtonKind::ghost);
     back.onClick = [this] {
         processor.stopPreview();
         session.setStep (Step::tap);
     };
-    configureButton (next, "Weiter: Rendern", "arrow-r", ButtonKind::primary, true);
+    configureButton (next, tr ("Weiter: Rendern"), "arrow-r", ButtonKind::primary, true);
     next.onClick = [this] {
         processor.stopPreview();
         session.setStep (Step::render);
@@ -194,16 +194,16 @@ void ReviewPage::paint (juce::Graphics& g)
     g.fillAll (colours::panel);
 
     const int sel = session.getSelectedMarker();
-    drawSectionLabel (g, leftColumn.withHeight (16), sel >= 0 ? de ("Marker · ") + selectedInfo().upToFirstOccurrenceOf ("\n", false, false) : juce::String ("Marker bearbeiten"));
-    drawSectionLabel (g, middleColumn.withHeight (16), "So wird angepasst");
-    drawSectionLabel (g, rightColumn.withHeight (16), de ("VORHÖREN"));
+    drawSectionLabel (g, leftColumn.withHeight (16), sel >= 0 ? tr ("Marker · ") + selectedInfo().upToFirstOccurrenceOf ("\n", false, false) : juce::String ("Marker bearbeiten"));
+    drawSectionLabel (g, middleColumn.withHeight (16), tr ("So wird angepasst"));
+    drawSectionLabel (g, rightColumn.withHeight (16), tr ("VORHÖREN"));
 
     // Mix labels above the slider
     g.setFont (uiFont (11.5f));
     g.setColour (colours::muted);
-    g.drawText ("Spur", mixRow.withHeight (14), juce::Justification::centredLeft);
-    g.drawText ("Klick", mixRow.withHeight (14), juce::Justification::centredRight);
-    g.drawText ("Mix", mixRow.withHeight (14), juce::Justification::centred);
+    g.drawText (tr ("Spur"), mixRow.withHeight (14), juce::Justification::centredLeft);
+    g.drawText (tr ("Klick"), mixRow.withHeight (14), juce::Justification::centredRight);
+    g.drawText (tr ("Mix"), mixRow.withHeight (14), juce::Justification::centred);
 
     // Tempo suggestion banner
     if (auto suggestion = session.getTapUnitSuggestion())
@@ -220,8 +220,8 @@ void ReviewPage::paint (juce::Graphics& g)
         text.removeFromLeft (10);
         g.setColour (colours::text);
         g.setFont (uiFont (13.0f));
-        g.drawFittedText (de ("Getappt ≈ ") + juce::String (plan.averageBpm, 1).replaceCharacter ('.', ',') + de (" BPM, Projekt ")
-                              + juce::String (target, 1).replaceCharacter ('.', ',') + de (" BPM. Anders gezählt? Dann ist jeder Marker ")
+        g.drawFittedText (tr ("Getappt ≈ ") + formatNumber (plan.averageBpm, 1) + tr (" BPM, Projekt ")
+                              + formatNumber (target, 1) + tr (" BPM. Anders gezählt? Dann ist jeder Marker ")
                               + describeTapUnit (*suggestion) + ".",
                           text, juce::Justification::centredLeft, 1);
     }
@@ -234,8 +234,8 @@ void ReviewPage::paint (juce::Graphics& g)
         text.removeFromLeft (10);
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
-        g.drawText (de ("Getappt Ø ") + juce::String (plan.averageBpm, 1).replaceCharacter ('.', ',') + de (" BPM → wird auf ")
-                        + juce::String (target, 1).replaceCharacter ('.', ',') + de (" BPM gebracht · 1 Marker = ")
+        g.drawText (tr ("Getappt Ø ") + formatNumber (plan.averageBpm, 1) + tr (" BPM → wird auf ")
+                        + formatNumber (target, 1) + tr (" BPM gebracht · 1 Marker = ")
                         + describeTapUnit (session.getSettings().tapUnit),
                     text, juce::Justification::centredLeft);
     }
@@ -247,12 +247,12 @@ void ReviewPage::paint (juce::Graphics& g)
     g.drawRoundedRectangle (offsetBox.toFloat().reduced (0.5f), 8.0f, 1.0f);
     g.setFont (monoFont (13.0f));
     g.setColour (sel >= 0 ? colours::text : colours::muted);
-    juce::String offset = de ("–");
+    juce::String offset = utf8 ("–");
     if (sel >= 0)
     {
         const auto& m = session.getMarkers()[(size_t) sel];
         const int ms = juce::roundToInt ((m.seconds - m.tappedSeconds) * 1000.0);
-        offset = (ms > 0 ? "+" : ms < 0 ? de ("−") : juce::String()) + juce::String (std::abs (ms)) + " ms";
+        offset = (ms > 0 ? "+" : ms < 0 ? utf8 ("−") : juce::String()) + juce::String (std::abs (ms)) + " ms";
     }
     g.drawText (offset, offsetBox, juce::Justification::centred);
 
@@ -261,7 +261,7 @@ void ReviewPage::paint (juce::Graphics& g)
         auto unitArea = juce::Rectangle<int> (leftColumn.getX(), unitRow.getY(), leftColumn.getWidth(), unitRow.getHeight());
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
-        g.drawText ("1 Marker =", unitArea, juce::Justification::centredLeft);
+        g.drawText (tr ("1 Marker ="), unitArea, juce::Justification::centredLeft);
         g.setColour (colours::text);
         g.setFont (uiFont (13.0f, true));
         g.drawText (describeTapUnit (session.getSettings().tapUnit),
@@ -273,7 +273,7 @@ void ReviewPage::paint (juce::Graphics& g)
     auto row = juce::Rectangle<int> (leftColumn.getX(), barRow.getY(), leftColumn.getWidth(), barRow.getHeight());
     g.setColour (colours::muted);
     g.setFont (uiFont (12.5f));
-    g.drawText ("Erster Marker = Takt", row, juce::Justification::centredLeft);
+    g.drawText (tr ("Erster Marker = Takt"), row, juce::Justification::centredLeft);
     g.setColour (colours::text);
     g.setFont (monoFont (14.0f, true));
     g.drawText (juce::String (session.getPlan().firstBar + 1), juce::Rectangle<int> (barDown.getRight(), row.getY(), barUp.getX() - barDown.getRight(), row.getHeight()),
@@ -289,8 +289,8 @@ void ReviewPage::paint (juce::Graphics& g)
     const int inserted = session.getNumInsertedMarkers();
     g.setColour (colours::muted);
     g.setFont (uiFont (12.5f));
-    g.drawText (juce::String ((int) session.getMarkers().size()) + " Marker" + (inserted > 0 ? de (" · ") + juce::String (inserted) + de (" ergänzt – bitte prüfen") : juce::String())
-                    + (session.isRendering() ? de (" · wird berechnet …") : juce::String()),
+    g.drawText (juce::String ((int) session.getMarkers().size()) + " " + tr ("Marker") + (inserted > 0 ? utf8 (" · ") + juce::String (inserted) + tr (" ergänzt – bitte prüfen") : juce::String())
+                    + (session.isRendering() ? tr (" · wird berechnet …") : juce::String()),
                 footer.reduced (24, 0).withTrimmedRight (220).withTrimmedLeft (150), juce::Justification::centredRight);
 }
 
@@ -304,10 +304,10 @@ juce::String ReviewPage::selectedInfo() const
     const auto& plan = session.getPlan();
     const auto position = describeGridPosition (session.getProjectTempo(), session.getSettings().tapUnit, plan.firstBar, sel);
 
-    juce::String how = m.origin == MarkerOrigin::inserted ? de ("automatisch ergänzt")
-                       : m.origin == MarkerOrigin::manual ? juce::String ("von Hand gesetzt")
-                       : m.snappedToAttack                ? juce::String ("an Transiente gerastet")
-                                                          : juce::String ("getappt");
+    juce::String how = m.origin == MarkerOrigin::inserted ? tr ("automatisch ergänzt")
+                       : m.origin == MarkerOrigin::manual ? tr ("von Hand gesetzt")
+                       : m.snappedToAttack                ? tr ("an Transiente gerastet")
+                                                          : tr ("getappt");
     return position + "\n" + how;
 }
 
@@ -348,7 +348,7 @@ void ReviewPage::sessionChanged()
     const auto suggestion = session.getTapUnitSuggestion();
     applySuggestion.setVisible (suggestion.has_value());
     if (suggestion.has_value())
-        configureButton (applySuggestion, "Als " + describeTapUnit (*suggestion) + " werten", "check", ButtonKind::primary);
+        configureButton (applySuggestion, tr ("Als") + " " + describeTapUnit (*suggestion) + " " + tr ("werten"), "check", ButtonKind::primary);
     unitBigger.setEnabled (settings.tapUnit != TapUnit::twoBars);
     unitSmaller.setEnabled (settings.tapUnit != TapUnit::halfBeat);
 
@@ -378,8 +378,8 @@ void ReviewPage::refresh()
     }
 
     const bool waiting = playWhenRendered && session.isRendering();
-    configureButton (play, waiting ? de ("Wird berechnet … ") + juce::String (juce::roundToInt (session.getRenderProgress() * 100.0)) + " %"
-                                   : playing ? juce::String ("Stopp") : juce::String ("Abspielen"),
+    configureButton (play, waiting ? tr ("Wird berechnet … ") + juce::String (juce::roundToInt (session.getRenderProgress() * 100.0)) + " %"
+                                   : playing ? tr ("Stopp") : tr ("Abspielen"),
                      playing ? "stop" : "play", ButtonKind::solid);
 }
 

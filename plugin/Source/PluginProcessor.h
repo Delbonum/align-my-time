@@ -48,8 +48,21 @@ public:
     /** True when the host gave us the track's events via ARA. */
     bool usesARA() const { return isBoundToARA(); }
 
-    /** (Re)loads the track: via ARA, or by finishing the input recording. */
+    /** (Re)loads the track from the host: via ARA, or (without ARA) by recording the next playback.
+        Switches back from a loaded audio file to the host's track. */
     void reloadTrack();
+
+    /** Alternative source: an audio file (always in the standalone app, optional in the plug-in).
+        It is placed at song position 0. */
+    void loadAudioFile (const juce::File& file);
+    static juce::String audioFileWildcard();
+    bool isUsingAudioFile() const { return sourceFile != juce::File(); }
+    const juce::File& getAudioFile() const { return sourceFile; }
+
+    bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
+
+    /** Taps from the key poller (any thread): song time at the moment of the key press. */
+    void pushKeyTap (double songSeconds) noexcept;
     bool isLoadingTrack() const { return loader != nullptr; }
     juce::String getLoadError() const { return loadError; }
 
@@ -85,6 +98,9 @@ private:
     PlayPositionTracker tracker;
     InputRecorder recorder;
     std::unique_ptr<TrackLoader> loader;
+    juce::File sourceFile;
+    std::unique_ptr<juce::Thread> fileLoader;
+    std::shared_ptr<bool> alive = std::make_shared<bool> (true);
     juce::String loadError;
 
     std::atomic<bool> hostPlaying { false };
@@ -101,6 +117,8 @@ private:
     // MIDI taps: song times collected on the audio thread.
     juce::AbstractFifo midiTapFifo { 64 };
     std::array<double, 64> midiTaps {};
+    juce::AbstractFifo keyTapFifo { 64 };
+    std::array<double, 64> keyTaps {};
 
     // Non-ARA host tempo, handed to the message thread.
     juce::SpinLock playHeadLock;
@@ -114,5 +132,15 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AlignMyTimeProcessor)
 };
+
+/** Replaces "Cubase" in a text with the actual host's name ("DAW" if unknown). */
+inline juce::String withHostName (const juce::String& text)
+{
+    const juce::PluginHostType host;
+    if (host.isCubase() || host.isNuendo())
+        return text;
+    const juce::String name (host.getHostDescription());
+    return text.replace ("Cubase", name.isEmpty() || name == "Unknown" ? juce::String ("DAW") : name);
+}
 
 } // namespace amt::plugin

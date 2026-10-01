@@ -39,8 +39,8 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel 4
 
-      - name: Core tests
-        run: ctest --test-dir build -C Release -R amt_core_tests --output-on-failure
+      - name: Core tests and translations
+        run: ctest --test-dir build -C Release -R "amt_core_tests|translations" --output-on-failure
 
       - name: End-to-end test (headless)
         if: runner.os == 'Linux'

@@ -1,6 +1,6 @@
 # Align my Time
 
-DAW plug-in (VST3/AU, ARA 2, JUCE 8): tap along to a track, then time-stretch or cut it onto the project tempo. UI and docs are German.
+DAW plug-in and standalone app (VST3/AU, ARA 2, JUCE 8): tap along to a track, then time-stretch or cut it onto the project tempo. UI and docs are German.
 
 ## Layout
 - `core/`: C++17, no JUCE. TempoMap, tap clean-up/Markers, OnsetDetector, WarpMap, Alignment (grid planning, TapUnit suggestion), Renderers (Signalsmith Stretch + attack splicing; slices + crossfade).
@@ -14,7 +14,8 @@ DAW plug-in (VST3/AU, ARA 2, JUCE 8): tap along to a track, then time-stretch or
 
 ## Conventions
 - JUCE code style (space before parentheses, `camelCase`, Allman braces); the build uses JUCE's strict warning flags: keep it warning-free (no float `==`, no shadowing).
-- Non-ASCII UI strings: `de ("…")` (UTF-8 source), never a plain `juce::String ("ä")`.
 - Audio thread: no allocation/locking; hand data over via `SharedObject`/`SharedClip` (freed on the message thread) or FIFOs.
+- UI texts are written in German and wrapped in `tr ("…")`; add the English text to `plugin/Source/Translations.cpp` (`tools/check_translations.py` runs as a test). Punctuation-only strings use `utf8 ("…")`, numbers `formatNumber()`, host-specific texts `withHostName()`.
 - Disabled buttons must explain why (`AlignMyTimeProcessor::getBlockingReason`).
+- **Version**: semantic versioning in the top-level `CMakeLists.txt` (`project(... VERSION x.y.z)`). Bump it with every change that reaches the user (patch = fixes, minor = new features, major = breaking project/state compatibility) and add an entry to `CHANGELOG.md`. The version shows in Settings › Credits.
 - Add a test for every behaviour change (core test, or smoke test for host interaction).

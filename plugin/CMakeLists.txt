@@ -35,7 +35,7 @@ juce_add_plugin(AlignMyTime
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     IS_ARA_EFFECT TRUE
-    ARA_FACTORY_ID "\"com.alignmytime.plugin.arafactory.${PROJECT_VERSION}\""
+    ARA_FACTORY_ID "\"com.alignmytime.plugin.arafactory\""
     ARA_DOCUMENT_ARCHIVE_ID "\"com.alignmytime.plugin.aradocumentarchive.1\""
     ARA_CONTENT_TYPES 0
     ARA_TRANSFORMATION_FLAGS 0
@@ -46,16 +46,20 @@ target_sources(AlignMyTime PRIVATE
     Source/AlignSession.cpp
     Source/DocumentController.cpp
     Source/Exporter.cpp
+    Source/Localisation.cpp
     Source/PlaybackRenderer.cpp
     Source/PluginEditor.cpp
     Source/PluginProcessor.cpp
     Source/PreviewPlayer.cpp
     Source/SourceLoader.cpp
+    Source/Translations.cpp
     Source/ui/Header.cpp
     Source/ui/LookAndFeel.cpp
     Source/ui/RenderPage.cpp
     Source/ui/ReviewPage.cpp
+    Source/ui/SettingsPanel.cpp
     Source/ui/TapPage.cpp
+    Source/ui/TempoEditor.cpp
     Source/ui/TempoLane.cpp
     Source/ui/WaveformView.cpp)
 
@@ -70,7 +74,8 @@ target_compile_definitions(AlignMyTime PUBLIC
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
-    JUCE_MODAL_LOOPS_PERMITTED=1)
+    JUCE_MODAL_LOOPS_PERMITTED=1
+    JUCE_USE_MP3AUDIOFORMAT=1)
 
 target_link_libraries(AlignMyTime
     PRIVATE

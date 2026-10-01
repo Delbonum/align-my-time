@@ -64,6 +64,9 @@ AlignMyTimeProcessor::AlignMyTimeProcessor()
 AlignMyTimeProcessor::~AlignMyTimeProcessor()
 {
     stopTimer();
+    *alive = false;
+    if (fileLoader != nullptr)
+        fileLoader->stopThread (5000);
     loader.reset();
 }
 
@@ -76,17 +79,25 @@ void AlignMyTimeProcessor::didBindToARA() noexcept
 
     // Load the track as soon as the host has told us about it.
     juce::MessageManager::callAsync ([safe = juce::WeakReference<AlignMyTimeProcessor> (this)] {
-        if (auto* p = safe.get(); p != nullptr && ! p->session.hasSource())
+        if (auto* p = safe.get(); p != nullptr && ! p->session.hasSource() && ! p->isUsingAudioFile())
             p->reloadTrack();
     });
 }
 
 void AlignMyTimeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    // A loaded file must match the playback rate (the standalone app may change devices).
+    const bool rateChanged = ! juce::approximatelyEqual (currentSampleRate, sampleRate);
     currentSampleRate = sampleRate;
+    if (rateChanged && isUsingAudioFile())
+        juce::MessageManager::callAsync ([safe = juce::WeakReference<AlignMyTimeProcessor> (this)] {
+            if (auto* p = safe.get())
+                p->loadAudioFile (p->sourceFile);
+        });
+
     preview.prepare (sampleRate);
     recorder.prepare (sampleRate, getTotalNumInputChannels());
-    recorder.setArmed (session.getStep() == Step::tap); // ready before the first block arrives
+    recorder.setArmed (session.getStep() == Step::tap && ! isUsingAudioFile()); // ready before the first block arrives
     prepareToPlayForARA (sampleRate, samplesPerBlock, getMainBusNumOutputChannels(), getProcessingPrecision());
 }
 
@@ -189,6 +200,14 @@ void AlignMyTimeProcessor::timerCallback()
         wasHostPlayingForTaps = playingNow;
     }
 
+    // Taps from the key poller
+    while (keyTapFifo.getNumReady() > 0)
+    {
+        const auto scope = keyTapFifo.read (1);
+        if (scope.blockSize1 > 0 && session.getStep() == Step::tap)
+            tapAt (keyTaps[(size_t) scope.startIndex1]);
+    }
+
     // Taps from MIDI
     while (midiTapFifo.getNumReady() > 0)
     {
@@ -210,7 +229,7 @@ void AlignMyTimeProcessor::timerCallback()
     {
         // The host may hand over the events (or enable sample access) only after binding:
         // keep trying quietly once a second until the track is there.
-        if (! session.hasSource() && loader == nullptr && ++araRetryTicks >= 30)
+        if (! session.hasSource() && ! isUsingAudioFile() && loader == nullptr && ++araRetryTicks >= 30)
         {
             araRetryTicks = 0;
             reloadTrack();
@@ -226,11 +245,11 @@ void AlignMyTimeProcessor::timerCallback()
     }
     if (info.hasValue())
         if (auto tempo = tempoFromPlayHead (*info))
-            session.setProjectTempo (*tempo);
+            session.setHostTempo (*tempo);
 
     // Record whenever the host plays during step 1. Every pass fills in or refreshes the part
     // that was played, so stopping early or starting in the middle is never a dead end.
-    recorder.setArmed (session.getStep() == Step::tap);
+    recorder.setArmed (session.getStep() == Step::tap && ! isUsingAudioFile());
     if (recorder.drain())
         session.sendChangeMessage();
 
@@ -252,7 +271,7 @@ void AlignMyTimeProcessor::loadFromRecorder()
 
     if (peak < 1.0e-5f)
     {
-        loadError = juce::String::fromUTF8 ("Beim Abspielen kam am Plugin kein Signal an \xe2\x80\x93 ist die Spur stummgeschaltet?");
+        loadError = tr ("Beim Abspielen kam am Plugin kein Signal an – ist die Spur stummgeschaltet?");
         session.sendChangeMessage();
         return;
     }
@@ -271,7 +290,7 @@ void AlignMyTimeProcessor::loadFromRecorder()
                        merged->channels[(size_t) c].begin() + (recorded.startSample - start));
     }
 
-    session.setSource (merged, juce::String::fromUTF8 ("Aufnahme vom Spureingang"));
+    session.setSource (merged, tr ("Aufnahme vom Spureingang"));
 }
 
 void AlignMyTimeProcessor::discardRecording()
@@ -286,15 +305,19 @@ juce::String AlignMyTimeProcessor::getBlockingReason (bool forRendering) const
 {
     if (! session.hasSource())
     {
+        if (fileLoader != nullptr)
+            return tr ("Datei wird geladen …");
+        if (isStandalone())
+            return tr ("Lade zuerst eine Audiodatei (Button „Datei laden“ oder per Drag & Drop).");
         if (isBoundToARA())
-            return loader != nullptr ? juce::String::fromUTF8 ("Spur wird geladen \xe2\x80\xa6")
-                                     : juce::String::fromUTF8 ("Warte auf die Audiodaten von Cubase \xe2\x80\xa6");
-        return juce::String::fromUTF8 ("Spiele die Spur erst einmal in Cubase ab \xe2\x80\x93 sie wird dabei aufgenommen.");
+            return loader != nullptr ? tr ("Spur wird geladen …")
+                                     : withHostName (tr ("Warte auf die Audiodaten von Cubase …"));
+        return withHostName (tr ("Spiele die Spur erst einmal in Cubase ab – oder lade eine Audiodatei."));
     }
     if (session.getMarkers().size() < 2)
-        return juce::String::fromUTF8 ("Mindestens 2 Marker tappen.");
+        return tr ("Mindestens 2 Marker tappen.");
     if (forRendering && session.isRendering())
-        return juce::String::fromUTF8 ("Wird berechnet \xe2\x80\xa6");
+        return tr ("Wird berechnet …");
     return {};
 }
 
@@ -302,8 +325,18 @@ void AlignMyTimeProcessor::reloadTrack()
 {
     loadError.clear();
 
+    if (isUsingAudioFile())
+    {
+        // Back from a file to the host's track.
+        sourceFile = juce::File();
+        session.setSource (nullptr, {});
+    }
+
     if (! isBoundToARA())
+    {
+        session.sendChangeMessage();
         return; // without ARA the track arrives by playing it in the host
+    }
 
     std::vector<juce::ARAPlaybackRegion*> regions;
     if (auto* renderer = getPlaybackRenderer())
@@ -317,13 +350,112 @@ void AlignMyTimeProcessor::reloadTrack()
                                                 auto finished = std::move (loader);
                                                 loadError = result.error;
                                                 if (result.tempo.has_value())
-                                                    session.setProjectTempo (*result.tempo);
-                                                if (result.clip != nullptr)
+                                                    session.setHostTempo (*result.tempo);
+                                                if (result.clip != nullptr && ! isUsingAudioFile())
                                                     session.setSource (result.clip, result.description);
                                                 else
                                                     session.sendChangeMessage();
                                             });
     session.sendChangeMessage();
+}
+
+juce::String AlignMyTimeProcessor::audioFileWildcard()
+{
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    return formats.getWildcardForAllFormats();
+}
+
+void AlignMyTimeProcessor::loadAudioFile (const juce::File& file)
+{
+    loadError.clear();
+    if (fileLoader != nullptr)
+        fileLoader->stopThread (5000);
+
+    sourceFile = file;
+    recorder.setArmed (false);
+    recorder.reset();
+
+    const double rate = currentSampleRate;
+    const int channels = juce::jmax (1, getMainBusNumOutputChannels());
+    std::weak_ptr<bool> weakAlive = alive;
+
+    struct Loader : juce::Thread
+    {
+        Loader (juce::File f, double r, int c, std::function<void (std::shared_ptr<AudioClip>, juce::String)> done)
+            : juce::Thread ("Align my Time file loader"), file (std::move (f)), rate (r), channels (c), onDone (std::move (done)) {}
+
+        void run() override
+        {
+            juce::AudioFormatManager formats;
+            formats.registerBasicFormats();
+            std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+            if (reader == nullptr || reader->lengthInSamples <= 0)
+            {
+                onDone (nullptr, tr ("Diese Datei kann nicht gelesen werden: ") + file.getFileName());
+                return;
+            }
+
+            const int length = (int) juce::jmin<juce::int64> (reader->lengthInSamples, std::numeric_limits<int>::max() / 2);
+            juce::AudioBuffer<float> buffer ((int) juce::jmax (1u, reader->numChannels), length);
+            reader->read (&buffer, 0, length, 0, true, true);
+            if (threadShouldExit())
+                return;
+
+            if (! juce::approximatelyEqual (reader->sampleRate, rate))
+            {
+                const int outLength = (int) std::llround (length * rate / reader->sampleRate);
+                juce::AudioBuffer<float> resampled (buffer.getNumChannels(), outLength);
+                for (int c = 0; c < buffer.getNumChannels(); ++c)
+                {
+                    juce::LagrangeInterpolator interpolator;
+                    interpolator.process (reader->sampleRate / rate, buffer.getReadPointer (c), resampled.getWritePointer (c), outLength);
+                }
+                buffer = std::move (resampled);
+            }
+
+            auto clip = std::make_shared<AudioClip> (channels, buffer.getNumSamples(), rate, 0);
+            for (int c = 0; c < channels; ++c)
+            {
+                const auto* src = buffer.getReadPointer (juce::jmin (c, buffer.getNumChannels() - 1));
+                std::copy (src, src + buffer.getNumSamples(), clip->channels[(size_t) c].begin());
+            }
+            onDone (clip, {});
+        }
+
+        juce::File file;
+        double rate;
+        int channels;
+        std::function<void (std::shared_ptr<AudioClip>, juce::String)> onDone;
+    };
+
+    fileLoader = std::make_unique<Loader> (file, rate, channels, [this, weakAlive, file] (std::shared_ptr<AudioClip> clip, juce::String error) {
+        juce::MessageManager::callAsync ([this, weakAlive, file, clip, error] {
+            if (auto a = weakAlive.lock(); a == nullptr || ! *a)
+                return;
+            if (fileLoader != nullptr)
+                fileLoader->stopThread (1000);
+            fileLoader.reset();
+            if (file != sourceFile)
+                return; // another file was chosen meanwhile
+
+            loadError = error;
+            if (clip != nullptr)
+                session.setSource (clip, tr ("Datei") + ": " + file.getFileName());
+            else
+                sourceFile = juce::File();
+            session.sendChangeMessage();
+        });
+    });
+    fileLoader->startThread();
+    session.sendChangeMessage();
+}
+
+void AlignMyTimeProcessor::pushKeyTap (double songSeconds) noexcept
+{
+    const auto scope = keyTapFifo.write (1);
+    if (scope.blockSize1 > 0)
+        keyTaps[(size_t) scope.startIndex1] = songSeconds;
 }
 
 void AlignMyTimeProcessor::tapNow()
@@ -366,8 +498,11 @@ void AlignMyTimeProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto tree = session.toValueTree();
 
+    if (isUsingAudioFile())
+        tree.setProperty ("audioFile", sourceFile.getFullPathName(), nullptr);
+
     // Without ARA the recorded audio is not in the project: keep it next to it.
-    if (! isBoundToARA() && session.hasSource())
+    if (! isBoundToARA() && session.hasSource() && ! isUsingAudioFile())
     {
         if (capturedClip != session.getSource().get() || ! captureFile.existsAsFile())
         {
@@ -392,6 +527,13 @@ void AlignMyTimeProcessor::setStateInformation (const void* data, int sizeInByte
 
     const auto tree = juce::ValueTree::fromXml (*xml);
     session.restoreFromValueTree (tree);
+
+    const juce::File audioFile (tree.getProperty ("audioFile").toString());
+    if (audioFile != juce::File() && audioFile.existsAsFile())
+    {
+        loadAudioFile (audioFile);
+        return;
+    }
 
     const juce::File capture (tree.getProperty ("captureFile").toString());
     if (! isBoundToARA() && capture.existsAsFile())

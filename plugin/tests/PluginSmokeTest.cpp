@@ -105,6 +105,8 @@ void saveSnapshot (juce::Component& c, const juce::File& file)
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+    setLanguage (Language::german);
+    setTapKey (TapKey::space);
     const juce::File screenshots = argc > 1 ? juce::File (juce::String (argv[1])) : juce::File();
 
     constexpr double rate = 48000.0;
@@ -281,6 +283,91 @@ int main (int argc, char** argv)
         if (suggestion.has_value())
             s.updateSettings ([u = *suggestion] (SessionSettings& st) { st.tapUnit = u; });
         check (std::abs (s.getPlan().averageBpm - 114.0) < 2.0 && ! s.getTapUnitSuggestion().has_value(), "after one click the tempo fits");
+    }
+
+    std::printf ("6. Tap key and Ctrl+Space\n");
+    {
+        auto& s = restored->getSession();
+        s.setStep (Step::tap);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (restored->createEditor());
+        check (! ed->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey, juce::ModifierKeys::ctrlModifier, 0)),
+               "Ctrl+Space always goes to the host (its transport)");
+
+        setTapKey (TapKey::tab);
+        restored->startPreview (s.getSource()->startSeconds() + 2.0, false, false, false);
+        juce::AudioBuffer<float> out (2, block);
+        juce::MidiBuffer none;
+        for (int i = 0; i < 8; ++i)
+            restored->processBlock (out, none);
+        s.beginTapping (0.0);
+        const auto before = s.getNumTapsThisPass();
+        check (ed->keyPressed (juce::KeyPress (juce::KeyPress::tabKey)), "configured tap key (Tab) is used");
+        check (s.getNumTapsThisPass() == before + 1, "Tab tapped a marker");
+        check (! ed->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)), "space stays with the host when it is not the tap key");
+        restored->stopPreview();
+        setTapKey (TapKey::space);
+    }
+
+    std::printf ("7. Manual target tempo\n");
+    {
+        auto& s = restored->getSession();
+        pumpMessages (100); // the host tempo arrives via the processor's timer
+        check (! s.usesManualTempo() && std::abs (s.getProjectTempo().bpmAt (0.0) - 120.0) < 1.0e-6, "host tempo used by default");
+        s.updateSettings ([] (SessionSettings& st) { st.manualTempo = true; st.manualBpm = 100.0; st.manualNumerator = 3; });
+        check (std::abs (s.getProjectTempo().bpmAt (0.0) - 100.0) < 1.0e-6 && s.getProjectTempo().signatureAt (0.0).numerator == 3,
+               "manual tempo and time signature become the target");
+        s.updateSettings ([] (SessionSettings& st) { st.manualTempo = false; });
+        check (std::abs (s.getProjectTempo().bpmAt (0.0) - 120.0) < 1.0e-6, "switching back uses the project tempo again");
+    }
+
+    std::printf ("8. Standalone: audio file, manual tempo, English UI, settings\n");
+    {
+        juce::AudioProcessor::setTypeOfNextNewPlugin (juce::AudioProcessor::wrapperType_Standalone);
+        auto standalone = std::make_unique<AlignMyTimeProcessor>();
+        juce::AudioProcessor::setTypeOfNextNewPlugin (juce::AudioProcessor::wrapperType_Undefined);
+        standalone->setRateAndBufferSizeDetails (rate, block);
+        standalone->prepareToPlay (rate, block);
+        check (standalone->isStandalone(), "standalone instance detected");
+        check (standalone->getBlockingReason (false).contains ("Audiodatei"), "standalone asks for an audio file");
+
+        // Write the take at 44.1 kHz to check resampling on load.
+        const auto wavFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("amt-smoke-take.wav");
+        {
+            wavFile.deleteFile();
+            std::unique_ptr<juce::OutputStream> stream (wavFile.createOutputStream());
+            auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions {}.withSampleRate (44100.0).withNumChannels (1).withBitsPerSample (24));
+            juce::AudioBuffer<float> buf (1, (int) (take.left.size() * 44100.0 / rate));
+            for (int i = 0; i < buf.getNumSamples(); ++i)
+                buf.setSample (0, i, take.left[(size_t) ((double) i * rate / 44100.0)]);
+            writer->writeFromAudioSampleBuffer (buf, 0, buf.getNumSamples());
+        }
+
+        standalone->loadAudioFile (wavFile);
+        for (int i = 0; i < 100 && ! standalone->getSession().hasSource(); ++i)
+            pumpMessages (50);
+        auto& s = standalone->getSession();
+        check (s.hasSource() && standalone->isUsingAudioFile(), "audio file loaded");
+        check (s.hasSource() && std::abs ((double) s.getSource()->numSamples() - (double) take.left.size()) < rate * 0.01,
+               "file resampled from 44.1 to 48 kHz");
+        check (s.usesManualTempo(), "standalone uses the manual tempo");
+
+        if (screenshots != juce::File())
+        {
+            setLanguage (Language::english);
+            std::unique_ptr<juce::AudioProcessorEditor> ed (standalone->createEditor());
+            ed->setVisible (true);
+            pumpMessages (100);
+            saveSnapshot (*ed, screenshots.getChildFile ("4-standalone-englisch.png"));
+            setLanguage (Language::german);
+
+            std::unique_ptr<juce::AudioProcessorEditor> de (standalone->createEditor());
+            de->setVisible (true);
+            dynamic_cast<AlignMyTimeEditor*> (de.get())->showSettings();
+            pumpMessages (100);
+            saveSnapshot (*de, screenshots.getChildFile ("5-einstellungen.png"));
+        }
+        check (tr ("Abspielen") == "Abspielen", "German texts back after switching the language");
+        wavFile.deleteFile();
     }
 
     std::printf ("\n%s\n", failures == 0 ? "ALL OK" : "FAILURES");

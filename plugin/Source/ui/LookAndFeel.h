@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Localisation.h"
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace amt::plugin::ui
@@ -25,8 +27,6 @@ namespace colours
     const juce::Colour waveAligned { 0xffe9d6ae };
 }
 
-/** UI text is German and written as UTF-8 in the sources. */
-inline juce::String de (const char* utf8) { return juce::String::fromUTF8 (utf8); }
 
 juce::Font uiFont (float height, bool bold = false);
 juce::Font monoFont (float height, bool bold = false);
@@ -80,6 +80,13 @@ public:
 
     /** Space at the bottom of the card for extra controls placed by the parent. */
     juce::Rectangle<int> getExtraArea() const;
+
+    void setText (const juce::String& newTitle, const juce::String& newDescription)
+    {
+        title = newTitle;
+        description = newDescription;
+        repaint();
+    }
 
 private:
     juce::String title, description;

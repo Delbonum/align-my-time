@@ -3,25 +3,45 @@
 namespace amt::plugin
 {
 
+//==============================================================================
+bool TapKeyPoller::isSupported()
+{
+   #if JUCE_WINDOWS
+    return true; // GetAsyncKeyState sees the key no matter who has the focus
+   #else
+    return false; // elsewhere JUCE only knows keys its own windows received
+   #endif
+}
+
+void TapKeyPoller::hiResTimerCallback()
+{
+    if (! enabled.load())
+    {
+        wasDown = true; // a key held while enabling must not count as a tap
+        return;
+    }
+
+    const bool down = juce::KeyPress::isKeyCurrentlyDown (keyCode.load());
+    if (down && ! wasDown && ! juce::ModifierKeys::getCurrentModifiersRealtime().isCtrlDown()
+        && processor.isAudioRunning())
+    {
+        processor.pushKeyTap (processor.getAudiblePositionSeconds());
+    }
+    wasDown = down;
+}
+
+//==============================================================================
 AlignMyTimeEditor::AlignMyTimeEditor (AlignMyTimeProcessor& p)
-    : juce::AudioProcessorEditor (&p), juce::AudioProcessorEditorARAExtension (&p), processor (p),
-      header (p.getSession()), tapPage (p), reviewPage (p), renderPage (p)
+    : juce::AudioProcessorEditor (&p), juce::AudioProcessorEditorARAExtension (&p), processor (p)
 {
     setLookAndFeel (&lookAndFeel);
+    buildUi();
 
-    addAndMakeVisible (header);
-    addChildComponent (tapPage);
-    addChildComponent (reviewPage);
-    addChildComponent (renderPage);
-
-    reviewPage.onRetapFrom = [this] (double seconds) {
-        processor.getSession().setStep (Step::tap);
-        tapPage.startPass (seconds);
+    processor.onTapFromMidi = [this] {
+        if (tapPage != nullptr)
+            tapPage->flash();
     };
-    processor.onTapFromMidi = [this] { tapPage.flash(); };
-
     processor.getSession().addChangeListener (this);
-    showStep (processor.getSession().getStep());
 
     setWantsKeyboardFocus (true);
     addMouseListener (this, true);
@@ -33,7 +53,60 @@ AlignMyTimeEditor::~AlignMyTimeEditor()
 {
     processor.onTapFromMidi = nullptr;
     processor.getSession().removeChangeListener (this);
+    settings.reset();
+    header.reset();
+    tapPage.reset();
+    reviewPage.reset();
+    renderPage.reset();
     setLookAndFeel (nullptr);
+}
+
+void AlignMyTimeEditor::buildUi()
+{
+    // Rebuilt from scratch when the language changes: every text is created in a constructor.
+    settings.reset();
+    header = std::make_unique<ui::Header> (processor.getSession());
+    tapPage = std::make_unique<ui::TapPage> (processor);
+    reviewPage = std::make_unique<ui::ReviewPage> (processor);
+    renderPage = std::make_unique<ui::RenderPage> (processor);
+
+    header->onOpenSettings = [this] { showSettings(); };
+    reviewPage->onRetapFrom = [this] (double seconds) {
+        processor.getSession().setStep (Step::tap);
+        tapPage->startPass (seconds);
+    };
+
+    addAndMakeVisible (*header);
+    addChildComponent (*tapPage);
+    addChildComponent (*reviewPage);
+    addChildComponent (*renderPage);
+
+    showStep (processor.getSession().getStep());
+    resized();
+}
+
+void AlignMyTimeEditor::showSettings()
+{
+    settings = std::make_unique<ui::SettingsPanel> (
+        processor,
+        [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<AlignMyTimeEditor> (this)] {
+                     if (safe != nullptr)
+                     {
+                         safe->buildUi();
+                         safe->showSettings(); // stay in the settings, now in the new language
+                     }
+                 }); },
+        [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<AlignMyTimeEditor> (this)] {
+                     if (safe != nullptr)
+                     {
+                         safe->settings.reset();
+                         safe->grabKeyboardFocus();
+                         safe->repaint();
+                     }
+                 }); });
+    addAndMakeVisible (*settings);
+    settings->setBounds (getLocalBounds());
+    settings->grabKeyboardFocus();
 }
 
 void AlignMyTimeEditor::paint (juce::Graphics& g)
@@ -41,31 +114,53 @@ void AlignMyTimeEditor::paint (juce::Graphics& g)
     g.fillAll (ui::colours::panel);
 }
 
+void AlignMyTimeEditor::paintOverChildren (juce::Graphics& g)
+{
+    if (! fileDragActive)
+        return;
+
+    auto area = getLocalBounds().reduced (16).toFloat();
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
+    g.fillRect (getLocalBounds());
+    g.setColour (ui::colours::accent);
+    juce::Path outline;
+    outline.addRoundedRectangle (area, 16.0f);
+    const float dashes[] = { 10.0f, 6.0f };
+    juce::PathStrokeType (2.0f).createDashedStroke (outline, outline, dashes, 2);
+    g.fillPath (outline);
+    g.setFont (ui::uiFont (22.0f, true));
+    g.drawText (tr ("Audiodatei hier ablegen"), area, juce::Justification::centred);
+}
+
 void AlignMyTimeEditor::resized()
 {
     auto area = getLocalBounds();
-    header.setBounds (area.removeFromTop (56));
-    for (auto* page : { (juce::Component*) &tapPage, (juce::Component*) &reviewPage, (juce::Component*) &renderPage })
-        page->setBounds (area);
+    if (header != nullptr)
+        header->setBounds (area.removeFromTop (56));
+    for (auto* page : { (juce::Component*) tapPage.get(), (juce::Component*) reviewPage.get(), (juce::Component*) renderPage.get() })
+        if (page != nullptr)
+            page->setBounds (area);
+    if (settings != nullptr)
+        settings->setBounds (getLocalBounds());
 }
 
 ui::Page* AlignMyTimeEditor::currentPage()
 {
     switch (shownStep)
     {
-        case Step::review: return &reviewPage;
-        case Step::render: return &renderPage;
+        case Step::review: return reviewPage.get();
+        case Step::render: return renderPage.get();
         case Step::tap:
-        default: return &tapPage;
+        default: return tapPage.get();
     }
 }
 
 void AlignMyTimeEditor::showStep (Step step)
 {
     shownStep = step;
-    tapPage.setVisible (step == Step::tap);
-    reviewPage.setVisible (step == Step::review);
-    renderPage.setVisible (step == Step::render);
+    tapPage->setVisible (step == Step::tap);
+    reviewPage->setVisible (step == Step::review);
+    renderPage->setVisible (step == Step::render);
     grabKeyboardFocus();
 }
 
@@ -80,21 +175,67 @@ void AlignMyTimeEditor::timerCallback()
     if (auto* page = currentPage())
         page->refresh();
 
+    // The poller only listens while tapping makes sense and the host app is in front.
+    keyPoller.keyCode.store (tapKeyPress (getTapKey()).getKeyCode());
+    keyPoller.enabled.store (TapKeyPoller::isSupported() && settings == nullptr && shownStep == Step::tap && isShowing()
+                             && processor.isAudioRunning() && juce::Process::isForegroundProcess());
 }
 
 void AlignMyTimeEditor::mouseDown (const juce::MouseEvent& e)
 {
-    // A click anywhere in the plug-in brings the keyboard back (space = tap), but we never take
-    // it on our own: when you click into Cubase, Cubase gets its keys.
-    if (e.eventComponent != nullptr && ! e.eventComponent->getWantsKeyboardFocus())
+    // A click anywhere in the plug-in brings the keyboard back (tap key), but we never take
+    // it on our own: when you click into the DAW, the DAW gets its keys.
+    if (e.eventComponent != nullptr && ! e.eventComponent->getWantsKeyboardFocus() && settings == nullptr)
         grabKeyboardFocus();
 }
 
 bool AlignMyTimeEditor::keyPressed (const juce::KeyPress& key)
 {
+    if (settings != nullptr)
+        return settings->keyPressed (key);
+
+    // While the poller listens (Windows), it does the tapping: swallow the key event so it isn't
+    // counted twice.
+    if (shownStep == Step::tap && key == tapKeyPress (getTapKey()) && keyPoller.enabled.load())
+        return true;
+
     if (auto* page = currentPage())
         return page->handleKey (key);
     return false;
+}
+
+//==============================================================================
+bool AlignMyTimeEditor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    const auto patterns = juce::StringArray::fromTokens (AlignMyTimeProcessor::audioFileWildcard(), ";", {});
+    for (const auto& f : files)
+        for (const auto& pattern : patterns)
+            if (juce::File (f).getFileName().matchesWildcard (pattern.trim(), true))
+                return true;
+    return false;
+}
+
+void AlignMyTimeEditor::fileDragEnter (const juce::StringArray&, int, int)
+{
+    fileDragActive = true;
+    repaint();
+}
+
+void AlignMyTimeEditor::fileDragExit (const juce::StringArray&)
+{
+    fileDragActive = false;
+    repaint();
+}
+
+void AlignMyTimeEditor::filesDropped (const juce::StringArray& files, int, int)
+{
+    fileDragActive = false;
+    repaint();
+    if (! files.isEmpty())
+    {
+        processor.getSession().setStep (Step::tap);
+        processor.loadAudioFile (juce::File (files[0]));
+    }
 }
 
 } // namespace amt::plugin

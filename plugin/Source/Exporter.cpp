@@ -1,4 +1,5 @@
 #include "Exporter.h"
+#include "Localisation.h"
 
 namespace amt::plugin
 {
@@ -13,7 +14,7 @@ juce::File Exporter::writeWav (const AudioClip& clip, const juce::String& name, 
     auto folder = defaultFolder();
     if (! folder.createDirectory())
     {
-        errorMessage = "Ordner kann nicht angelegt werden: " + folder.getFullPathName();
+        errorMessage = tr ("Ordner kann nicht angelegt werden: ") + folder.getFullPathName();
         return {};
     }
 
@@ -23,7 +24,7 @@ juce::File Exporter::writeWav (const AudioClip& clip, const juce::String& name, 
     std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
     if (stream == nullptr)
     {
-        errorMessage = "Datei kann nicht geschrieben werden: " + file.getFullPathName();
+        errorMessage = tr ("Datei kann nicht geschrieben werden: ") + file.getFullPathName();
         return {};
     }
 
@@ -35,7 +36,7 @@ juce::File Exporter::writeWav (const AudioClip& clip, const juce::String& name, 
     auto writer = wav.createWriterFor (stream, options);
     if (writer == nullptr)
     {
-        errorMessage = "WAV-Writer konnte nicht erstellt werden.";
+        errorMessage = tr ("WAV-Writer konnte nicht erstellt werden.");
         return {};
     }
 

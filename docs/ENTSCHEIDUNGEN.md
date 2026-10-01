@@ -30,6 +30,14 @@ Ein Plugin kann in Cubase keine Spuren anlegen. Deshalb:
 - **Als neue Spur:** Das Plugin schreibt eine 24-bit-WAV-Datei, die du per Drag & Drop aus dem Plugin auf eine neue Spur ziehst. Mit „ab Projektanfang“ beginnt die Datei bei Songposition 0 und gehört an Takt 1, damit ist sie automatisch richtig platziert.
 - **In dieser Spur ersetzen:** Die Spur spielt über ARA die angepasste Version. Das ist nicht-destruktiv, jederzeit zurückschaltbar und bleibt im Projekt gespeichert. Zum Festschreiben nutzt du „Render in Place“ in Cubase.
 
+## 5. Bedienung, Sprachen, Version (ab 1.1.0)
+
+- **Tap-Taste:** Ein Plugin kann die Tastaturbefehle von Cubase nicht ändern. Darum: Strg+Leertaste wird vom Plugin nie benutzt (frei für Cubases Start/Stop), die Tap-Taste ist wählbar, und unter Windows fragt das Plugin die Tap-Taste systemweit ab (`GetAsyncKeyState`). Damit kommen Taps auch an, wenn Cubase die Taste für sich behält, und das auf etwa 2 ms genau. Unter macOS zählen nur Tasten, die das Plugin-Fenster erhält.
+- **Ziel-Tempo:** Standardmäßig das Projekttempo, wahlweise manuell (Tempo + Taktart). Das Standalone hat kein Projekt und nutzt immer das manuelle Tempo.
+- **Audiodateien:** Im Standalone die einzige Quelle, im Plugin eine Alternative (Datei liegt ab Songposition 0). Standard im Plugin bleibt ARA bzw. die Aufnahme.
+- **Sprache:** Deutsch und Englisch, umschaltbar ohne Neustart. Gespeichert pro Rechner (nicht pro Projekt).
+- **Version:** Semantic Versioning, sichtbar unter Einstellungen › Credits, Historie in `CHANGELOG.md`.
+
 ## Weitere Entscheidungen
 
 | Thema | Entscheidung | Warum |

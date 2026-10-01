@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(AlignMyTime VERSION 0.1.0 LANGUAGES C CXX)
+# Semantic versioning: MAJOR.MINOR.PATCH, bumped with every change (see CHANGELOG.md)
+project(AlignMyTime VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,6 +29,12 @@ add_subdirectory(core)
 if(AMT_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+
+    # Every UI text must have an English translation
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_FOUND AND AMT_BUILD_PLUGIN)
+        add_test(NAME translations COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_translations.py)
+    endif()
 endif()
 
 if(AMT_BUILD_PLUGIN)

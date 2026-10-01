@@ -26,10 +26,10 @@ private:
     std::vector<double> projectBarLines (double start, double end) const;
 
     WaveformView before, after;
-    ChoiceCard newTrackCard { "Als neue Spur", de ("Schreibt eine WAV-Datei. Zieh sie auf eine neue Spur – mit „ab Projektanfang“ einfach an Takt 1.") };
-    ChoiceCard replaceCard { "In dieser Spur ersetzen", de ("Die Spur spielt ab sofort die angepasste Version. Nicht-destruktiv, jederzeit zurückschaltbar.") };
+    ChoiceCard newTrackCard { tr ("Als neue Spur"), tr ("Schreibt eine WAV-Datei. Zieh sie auf eine neue Spur – mit „ab Projektanfang“ einfach an Takt 1.") };
+    ChoiceCard replaceCard { tr ("In dieser Spur ersetzen"), tr ("Die Spur spielt ab sofort die angepasste Version. Nicht-destruktiv, jederzeit zurückschaltbar.") };
     juce::TextEditor trackName;
-    ToggleRow fromProjectStart { "Datei ab Projektanfang (Takt 1)" };
+    ToggleRow fromProjectStart { tr ("Datei ab Projektanfang (Takt 1)") };
     std::unique_ptr<DragTile> dragTile;
     juce::TextButton showInFolder;
 

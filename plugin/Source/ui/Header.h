@@ -6,7 +6,7 @@
 namespace amt::plugin::ui
 {
 
-/** Logo, the three steps (Tappen / Prüfen / Rendern) and the project tempo synced from the host. */
+/** Logo, the three steps (Tappen / Prüfen / Rendern), the target tempo (click to edit) and the settings. */
 class Header : public juce::Component, private juce::ChangeListener
 {
 public:
@@ -15,6 +15,10 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+
+    std::function<void()> onOpenSettings;
 
 private:
     class StepButton;
@@ -24,6 +28,7 @@ private:
 
     AlignSession& session;
     juce::OwnedArray<StepButton> steps;
+    juce::TextButton settingsButton;
     juce::Rectangle<int> tempoChip;
 };
 
