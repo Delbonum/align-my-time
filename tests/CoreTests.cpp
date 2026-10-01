@@ -132,7 +132,7 @@ void testTempoMap()
     CHECK (changing.signatureAt (9.0).numerator == 3);
 
     // Beat grid follows the signature change: bar 1 starts at quarter 4, its beats are quarters.
-    CHECK_NEAR (amt::gridQuarters (changing, amt::TapMode::beats, 1, 5), 9.0, 1e-9);
+    CHECK_NEAR (amt::gridQuarters (changing, amt::TapUnit::beat, 1, 5), 9.0, 1e-9);
 
     amt::TempoMap pickup ({ { 0.0, 0.0 }, { 1.0, 2.0 } }, { { 1.0, 4, 4 } }); // first bar line at quarter 1
     CHECK_NEAR (pickup.barsToQuarters (2.0), 9.0, 1e-9);
@@ -140,7 +140,7 @@ void testTempoMap()
 
     amt::TempoMap sixEight ({ { 0.0, 0.0 }, { 1.0, 2.0 } }, { { 0.0, 6, 8 } });
     CHECK_NEAR (sixEight.barsToQuarters (1.0), 3.0, 1e-9);
-    CHECK_NEAR (amt::gridQuarters (sixEight, amt::TapMode::beats, 0, 6), 3.0, 1e-9);
+    CHECK_NEAR (amt::gridQuarters (sixEight, amt::TapUnit::beat, 0, 6), 3.0, 1e-9);
 }
 
 void testWarpMap()
@@ -214,10 +214,10 @@ void testOnsetSnapping()
         CHECK_NEAR (markers[i].seconds, take.downbeats[i], 0.004);
 }
 
-amt::AlignmentPlan planForTake (const DriftingTake& take, amt::TapMode mode)
+amt::AlignmentPlan planForTake (const DriftingTake& take, amt::TapUnit mode)
 {
     std::vector<amt::Marker> markers;
-    const auto& positions = mode == amt::TapMode::downbeats ? take.downbeats : take.onsets;
+    const auto& positions = mode == amt::TapUnit::bar ? take.downbeats : take.onsets;
     for (auto p : positions)
         markers.push_back ({ p, p, amt::MarkerOrigin::tapped, true });
     return amt::planAlignment (markers, amt::TempoMap::constant (120.0), mode);
@@ -226,7 +226,7 @@ amt::AlignmentPlan planForTake (const DriftingTake& take, amt::TapMode mode)
 void testPlan()
 {
     const auto take = makeDriftingTake();
-    const auto plan = planForTake (take, amt::TapMode::downbeats);
+    const auto plan = planForTake (take, amt::TapUnit::bar);
 
     CHECK (plan.firstBar == 1); // 1.03 s is nearest to the bar line at 2.0 s
     CHECK (plan.targetSeconds.size() == take.downbeats.size());
@@ -235,10 +235,30 @@ void testPlan()
     CHECK (plan.averageBpm > 112.0 && plan.averageBpm < 116.0);
     CHECK (plan.minBpm >= 111.9 && plan.maxBpm <= 116.1);
 
-    const auto beatPlan = planForTake (take, amt::TapMode::beats);
+    const auto beatPlan = planForTake (take, amt::TapUnit::beat);
     CHECK_NEAR (beatPlan.targetSeconds[5], 2.0 + 5 * 0.5, 1e-9);
 
-    const auto forced = amt::planAlignment ({ { 1.0, 1.0 }, { 3.0, 3.0 } }, amt::TempoMap::constant (120.0), amt::TapMode::downbeats, 4);
+    // Tapped on 1 and 3 at 124 BPM while "every one" was selected: suggest half bars.
+    {
+        std::vector<amt::Marker> taps;
+        for (int i = 0; i < 16; ++i)
+        {
+            const double t = 2.0 + i * (2.0 * 60.0 / 124.0);
+            taps.push_back ({ t, t, amt::MarkerOrigin::tapped, true });
+        }
+        const auto tempo124 = amt::TempoMap::constant (124.0);
+        const auto asBars = amt::planAlignment (taps, tempo124, amt::TapUnit::bar);
+        CHECK_NEAR (asBars.averageBpm, 248.0, 0.01);
+        const auto suggestion = amt::suggestTapUnit (asBars, tempo124, amt::TapUnit::bar);
+        CHECK (suggestion.has_value() && *suggestion == amt::TapUnit::halfBar);
+
+        const auto asHalfBars = amt::planAlignment (taps, tempo124, amt::TapUnit::halfBar);
+        CHECK_NEAR (asHalfBars.averageBpm, 124.0, 0.01);
+        CHECK (! amt::suggestTapUnit (asHalfBars, tempo124, amt::TapUnit::halfBar).has_value());
+        CHECK_NEAR (asHalfBars.targetSeconds[3] - asHalfBars.targetSeconds[2], 2.0 * 60.0 / 124.0, 1e-9);
+    }
+
+    const auto forced = amt::planAlignment ({ { 1.0, 1.0 }, { 3.0, 3.0 } }, amt::TempoMap::constant (120.0), amt::TapUnit::bar, 4);
     CHECK_NEAR (forced.targetSeconds[0], 8.0, 1e-9);
 }
 
@@ -261,7 +281,7 @@ void checkAlignedToGrid (const amt::AudioClip& rendered, const DriftingTake& tak
 void testTimeStretchAlignment()
 {
     const auto take = makeDriftingTake();
-    const auto plan = planForTake (take, amt::TapMode::downbeats);
+    const auto plan = planForTake (take, amt::TapUnit::bar);
 
     // Downbeat markers only: beats in between follow from the bar-wise stretch.
     std::vector<double> attacks;
@@ -277,7 +297,7 @@ void testTimeStretchAlignment()
 void testSliceAlignment()
 {
     const auto take = makeDriftingTake();
-    const auto plan = planForTake (take, amt::TapMode::beats);
+    const auto plan = planForTake (take, amt::TapUnit::beat);
     const auto rendered = amt::renderSlices (take.clip, plan.warp, 0.010, amt::defaultRenderRange (take.clip, plan.warp));
     checkAlignedToGrid (rendered, take, plan, 0.004, "cut + crossfade (beats)");
 }
@@ -336,7 +356,7 @@ void testPitchIsPreserved()
 void testCancellation()
 {
     const auto take = makeDriftingTake();
-    const auto plan = planForTake (take, amt::TapMode::downbeats);
+    const auto plan = planForTake (take, amt::TapUnit::bar);
     const auto rendered = amt::renderTimeStretch (take.clip, plan.warp, amt::StretchQuality::melodic,
                                                   amt::defaultRenderRange (take.clip, plan.warp), [] (double) { return false; });
     CHECK (rendered.isEmpty());

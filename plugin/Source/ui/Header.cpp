@@ -102,6 +102,10 @@ void Header::update()
     }
     steps[1]->setEnabled (session.getMarkers().size() >= 2);
     steps[2]->setEnabled (session.canAlign());
+    steps[1]->setTooltip (steps[1]->isEnabled() ? juce::String() : juce::String::fromUTF8 ("Erst mindestens 2 Marker tappen"));
+    steps[2]->setTooltip (steps[2]->isEnabled() ? juce::String()
+                                                : session.hasSource() ? juce::String::fromUTF8 ("Erst mindestens 2 Marker tappen")
+                                                                      : juce::String::fromUTF8 ("Die Spur fehlt noch (siehe Quelle)"));
     repaint();
 }
 

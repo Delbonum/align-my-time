@@ -281,7 +281,7 @@ void AlignSession::updateSettings (const std::function<void (SessionSettings&)>&
     const auto before = settings;
     change (settings);
 
-    const bool affectsResult = before.tapMode != settings.tapMode || before.method != settings.method
+    const bool affectsResult = before.tapUnit != settings.tapUnit || before.method != settings.method
                                || before.quality != settings.quality || ! juce::approximatelyEqual (before.crossfadeMs, settings.crossfadeMs)
                                || before.firstBar != settings.firstBar;
     markChanged (affectsResult);
@@ -303,7 +303,8 @@ void AlignSession::setStep (Step newStep)
 
 void AlignSession::markChanged (bool affectsResult)
 {
-    plan = planAlignment (markers, projectTempo, settings.tapMode, settings.firstBar);
+    plan = planAlignment (markers, projectTempo, settings.tapUnit, settings.firstBar);
+    tapUnitSuggestion = suggestTapUnit (plan, projectTempo, settings.tapUnit);
 
     if (affectsResult)
     {
@@ -386,7 +387,7 @@ void AlignSession::setReplaceActive (bool active)
 namespace ids
 {
     static const juce::Identifier root ("AlignMyTime"), markers ("Markers"), marker ("Marker"), seconds ("seconds"),
-        tapped ("tapped"), origin ("origin"), snapped ("snapped"), tapMode ("tapMode"), method ("method"), quality ("quality"),
+        tapped ("tapped"), origin ("origin"), snapped ("snapped"), tapMode ("tapMode"), tapUnit ("tapUnit"), clickBlend ("clickBlend"), method ("method"), quality ("quality"),
         crossfade ("crossfadeMs"), snap ("snapToAttacks"), leadIn ("leadIn"), click ("clickInPreview"), tapOffset ("tapOffsetMs"),
         destination ("destination"), fromStart ("exportFromProjectStart"), muteOriginal ("muteOriginal"), firstBar ("firstBar"),
         trackName ("trackName"), step ("step"), replace ("replaceActive"), version ("version");
@@ -395,8 +396,9 @@ namespace ids
 juce::ValueTree AlignSession::toValueTree() const
 {
     juce::ValueTree tree (ids::root);
-    tree.setProperty (ids::version, 1, nullptr);
-    tree.setProperty (ids::tapMode, (int) settings.tapMode, nullptr);
+    tree.setProperty (ids::version, 2, nullptr);
+    tree.setProperty (ids::tapUnit, (int) settings.tapUnit, nullptr);
+    tree.setProperty (ids::clickBlend, settings.clickBlend, nullptr);
     tree.setProperty (ids::method, (int) settings.method, nullptr);
     tree.setProperty (ids::quality, (int) settings.quality, nullptr);
     tree.setProperty (ids::crossfade, settings.crossfadeMs, nullptr);
@@ -431,7 +433,10 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
     if (! tree.hasType (ids::root))
         return;
 
-    settings.tapMode = (TapMode) (int) tree.getProperty (ids::tapMode, 0);
+    // Version 1 stored "tapMode" (0 = every one, 1 = every beat).
+    const int legacyMode = tree.getProperty (ids::tapMode, 0);
+    settings.tapUnit = (TapUnit) (int) tree.getProperty (ids::tapUnit, (int) (legacyMode == 1 ? TapUnit::beat : TapUnit::bar));
+    settings.clickBlend = tree.getProperty (ids::clickBlend, 0.5f);
     settings.method = (AlignMethod) (int) tree.getProperty (ids::method, 0);
     settings.quality = (StretchQuality) (int) tree.getProperty (ids::quality, 0);
     settings.crossfadeMs = tree.getProperty (ids::crossfade, 10.0);
@@ -466,6 +471,37 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
 juce::String formatBpm (double bpm)
 {
     return juce::String (bpm, 2).replaceCharacter ('.', ',');
+}
+
+juce::String describeTapUnit (TapUnit unit)
+{
+    switch (unit)
+    {
+        case TapUnit::twoBars:  return "2 Takte";
+        case TapUnit::bar:      return "1 Takt";
+        case TapUnit::halfBar:  return juce::String::fromUTF8 ("\xc2\xbd Takt");
+        case TapUnit::beat:     return juce::String::fromUTF8 ("1 Z\xc3\xa4hlzeit");
+        case TapUnit::halfBeat:
+        default:                return juce::String::fromUTF8 ("\xc2\xbd Z\xc3\xa4hlzeit");
+    }
+}
+
+juce::String describeGridPosition (const TempoMap& tempo, TapUnit unit, int firstBar, int index)
+{
+    const double q = gridQuarters (tempo, unit, firstBar, index);
+    const double bars = tempo.quartersToBars (q);
+    const double barStart = std::floor (bars + 1.0e-6);
+    auto text = "Takt " + juce::String ((int) barStart + 1);
+
+    const auto& sig = tempo.signatureAt (q);
+    const double beat = (q - tempo.barsToQuarters (barStart)) / sig.quartersPerBeat();
+    if (beat > 1.0e-6)
+    {
+        const bool whole = std::abs (beat - std::round (beat)) < 1.0e-6;
+        text << juce::String::fromUTF8 (", Z\xc3\xa4hlzeit ") << (whole ? juce::String ((int) std::round (beat) + 1)
+                                                                    : juce::String (beat + 1.0, 1).replaceCharacter ('.', ','));
+    }
+    return text;
 }
 
 juce::String formatTime (double seconds)

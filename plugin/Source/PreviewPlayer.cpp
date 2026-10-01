@@ -83,6 +83,8 @@ bool PreviewPlayer::render (juce::AudioBuffer<float>& buffer) noexcept
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
     auto pos = position.load();
+    const float track = trackGain.load();
+    const float clickScale = clickLevel.load();
 
     buffer.clear();
 
@@ -116,7 +118,7 @@ bool PreviewPlayer::render (juce::AudioBuffer<float>& buffer) noexcept
         for (int c = 0; c < numChannels; ++c)
         {
             const float v = clip != nullptr ? clip->sampleAt (juce::jmin (c, clip->numChannels() - 1), pos) : 0.0f;
-            buffer.setSample (c, i, v + click);
+            buffer.setSample (c, i, track * v + clickScale * click);
         }
     }
 

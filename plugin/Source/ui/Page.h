@@ -15,16 +15,45 @@ public:
     {
         reload.setButtonText ("Spur neu laden");
         reload.getProperties().set ("icon", "refresh");
-        reload.onClick = [this] { processor.reloadTrack(); };
+        reload.setWantsKeyboardFocus (false);
+        reload.onClick = [this] {
+            if (processor.usesARA())
+            {
+                processor.reloadTrack();
+                return;
+            }
+
+            // Without ARA this throws work away: ask first.
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                              .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                              .withTitle (de ("Aufnahme verwerfen?"))
+                                              .withMessage (de ("Die aufgenommene Spur und alle Marker werden gelöscht. "
+                                                                "Danach die Spur in Cubase erneut abspielen."))
+                                              .withButton ("Verwerfen")
+                                              .withButton ("Abbrechen")
+                                              .withAssociatedComponent (this),
+                                          [safe = juce::Component::SafePointer<SourceStrip> (this)] (int result) {
+                                              if (safe != nullptr && result == 1)
+                                                  safe->processor.discardRecording();
+                                          });
+        };
         addAndMakeVisible (reload);
     }
 
-    void resized() override { reload.setBounds (getLocalBounds().removeFromRight (150).withSizeKeepingCentre (150, 30)); }
+    void resized() override { reload.setBounds (getLocalBounds().removeFromRight (170).withSizeKeepingCentre (170, 30)); }
 
     void paint (juce::Graphics& g) override
     {
-        auto area = getLocalBounds().withTrimmedRight (160);
-        drawIcon (g, "track", area.removeFromLeft (16).toFloat().withSizeKeepingCentre (16.0f, 16.0f), colours::muted);
+        auto area = getLocalBounds().withTrimmedRight (180);
+
+        // Mode chip: how the track gets into the plug-in.
+        const auto mode = processor.usesARA() ? juce::String ("ARA") : juce::String ("Insert");
+        auto chip = area.removeFromLeft (processor.usesARA() ? 44 : 54).withSizeKeepingCentre (processor.usesARA() ? 44 : 54, 22);
+        g.setColour (colours::panel2);
+        g.fillRoundedRectangle (chip.toFloat(), 6.0f);
+        g.setColour (colours::muted);
+        g.setFont (monoFont (11.0f, true));
+        g.drawText (mode, chip, juce::Justification::centred);
         area.removeFromLeft (10);
 
         auto& session = processor.getSession();
@@ -40,9 +69,11 @@ public:
                    + juce::String::fromUTF8 ("\xe2\x80\x93") + formatTime (clip->endSeconds());
         }
         else if (processor.usesARA())
-            text = "Keine Events geladen";
+            text = de ("Warte auf die Events von Cubase …");
+        else if (processor.isHostPlaying())
+            text = de ("● Aufnahme läuft – einfach mittappen");
         else
-            text = juce::String::fromUTF8 ("Ohne ARA: Spiele das Projekt im Host ab \xe2\x80\x93 die Spur wird dabei aufgenommen.");
+            text = de ("Spiele die Spur in Cubase ab – sie wird dabei aufgenommen.");
 
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
@@ -52,7 +83,13 @@ public:
         g.drawFittedText (text, area, juce::Justification::centredLeft, 1);
     }
 
-    void update() { reload.setButtonText (processor.usesARA() ? "Spur neu laden" : "Neu aufnehmen"); repaint(); }
+    void update()
+    {
+        reload.setButtonText (processor.usesARA() ? juce::String ("Spur neu laden") : de ("Aufnahme verwerfen"));
+        reload.getProperties().set ("icon", processor.usesARA() ? "refresh" : "trash");
+        reload.setVisible (processor.usesARA() || processor.getSession().hasSource());
+        repaint();
+    }
 
 private:
     AlignMyTimeProcessor& processor;
@@ -109,6 +146,20 @@ protected:
         g.fillRect (footer);
         g.setColour (colours::border);
         g.fillRect (footer.removeFromTop (1));
+    }
+
+    /** Explains a disabled "next" button right next to it (amber, so it is noticed). */
+    static void paintBlockingReason (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& reason)
+    {
+        if (reason.isEmpty())
+            return;
+        g.setFont (uiFont (12.5f, true));
+        const int w = juce::jmin (area.getWidth(), juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), reason) + 26);
+        auto box = area.removeFromRight (w);
+        drawIcon (g, "info", box.removeFromLeft (16).withSizeKeepingCentre (16, 16).toFloat(), colours::accent);
+        box.removeFromLeft (8);
+        g.setColour (colours::accent);
+        g.drawFittedText (reason, box, juce::Justification::centredLeft, 2);
     }
 
     /** Range shown by waveforms: the source plus a little air. */

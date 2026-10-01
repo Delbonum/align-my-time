@@ -125,34 +125,56 @@ int main (int argc, char** argv)
     for (auto d : take.downbeats)
         tapSamples.push_back ((juce::int64) std::llround ((d + jitter (rng)) * rate));
 
-    host.playing = true;
     juce::AudioBuffer<float> buffer (2, block);
     juce::MidiBuffer midi;
-    size_t nextTap = 0;
-    for (host.sample = 0; host.sample < (juce::int64) take.left.size(); host.sample += block)
-    {
-        for (int i = 0; i < block; ++i)
-        {
-            const auto s = (size_t) host.sample + (size_t) i;
-            buffer.setSample (0, i, s < take.left.size() ? take.left[s] : 0.0f);
-            buffer.setSample (1, i, s < take.right.size() ? take.right[s] : 0.0f);
-        }
-        midi.clear();
-        while (nextTap < tapSamples.size() && tapSamples[nextTap] < host.sample + block)
-            midi.addEvent (juce::MidiMessage::noteOn (1, 36, 1.0f), (int) (tapSamples[nextTap++] - host.sample));
 
+    // Plays [from, to) seconds through the plug-in like a host would, tapping via MIDI.
+    auto playRange = [&] (double from, double to) {
+        host.playing = true;
+        size_t nextTap = 0;
+        const auto start = (juce::int64) (from * rate) / block * block;
+        while (nextTap < tapSamples.size() && tapSamples[nextTap] < start)
+            ++nextTap;
+        for (host.sample = start; host.sample < (juce::int64) (to * rate); host.sample += block)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const auto smp = (size_t) host.sample + (size_t) i;
+                buffer.setSample (0, i, smp < take.left.size() ? take.left[smp] : 0.0f);
+                buffer.setSample (1, i, smp < take.right.size() ? take.right[smp] : 0.0f);
+            }
+            midi.clear();
+            while (nextTap < tapSamples.size() && tapSamples[nextTap] < host.sample + block)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 36, 1.0f), (int) (tapSamples[nextTap++] - host.sample));
+
+            processor->processBlock (buffer, midi);
+            // We run much faster than real time: give the message thread time to drain the recorder.
+            if ((host.sample / block) % 16 == 0)
+                pumpMessages (40);
+        }
+        pumpMessages (100);
+        host.playing = false;
         processor->processBlock (buffer, midi);
-        // We run much faster than real time: give the message thread time to drain the recorder.
-        if ((host.sample / block) % 16 == 0)
-            pumpMessages (40);
+        pumpMessages (200);
+    };
+
+    {
+        // Before anything was recorded the space bar belongs to the host (starts Cubase).
+        std::unique_ptr<juce::AudioProcessorEditor> early (processor->createEditor());
+        check (! early->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)), "space bar goes to the host while there is no track yet");
     }
-    pumpMessages (100);
-    host.playing = false;
-    processor->processBlock (buffer, midi);
-    pumpMessages (200);
+
+    // Stopped early, then started again in the middle: both passes add up to the whole track.
+    playRange (0.0, 9.0);
+    check (processor->getSession().hasSource(), "first partial pass is usable right away");
+    playRange (7.0, (double) take.left.size() / rate);
 
     auto& session = processor->getSession();
     check (session.hasSource(), "track was recorded from the input");
+    std::printf ("  merged source: start %lld, %lld samples (take %zu)\n", (long long) session.getSource()->startSample,
+                 (long long) session.getSource()->numSamples(), take.left.size());
+    check (session.getSource()->startSample == 0 && session.getSource()->numSamples() >= (int64_t) take.left.size() - block,
+           "two partial passes merged into the whole track");
     check (session.getMarkers().size() == take.downbeats.size(), "one marker per tapped downbeat");
     double worstSnap = 0.0;
     for (size_t i = 0; i < session.getMarkers().size() && i < take.downbeats.size(); ++i)
@@ -234,6 +256,32 @@ int main (int argc, char** argv)
     for (int i = 0; i < 600 && restored->getSession().isRendering(); ++i)
         pumpMessages (50);
     check (restored->getSession().isReplaceActive(), "replacement re-rendered and active after reload");
+
+    std::printf ("5. Tapped on 1 and 3 although \"every one\" was selected\n");
+    {
+        auto& s = restored->getSession();
+        s.setStep (Step::tap);
+        s.beginTapping (0.0);
+        for (size_t i = 0; i + 1 < take.downbeats.size(); ++i)
+        {
+            s.addTap (take.downbeats[i]);
+            s.addTap (0.5 * (take.downbeats[i] + take.downbeats[i + 1]));
+        }
+        const auto suggestion = s.getTapUnitSuggestion();
+        if (screenshots != juce::File())
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> ed (restored->createEditor());
+            s.setStep (Step::review);
+            ed->setVisible (true);
+            pumpMessages (100);
+            saveSnapshot (*ed, screenshots.getChildFile ("2b-pruefen-tempohinweis.png"));
+        }
+        std::printf ("  tapped tempo read as bars: %.1f BPM (project 120)\n", s.getPlan().averageBpm);
+        check (suggestion.has_value() && *suggestion == TapUnit::halfBar, "plug-in suggests counting the taps as half bars");
+        if (suggestion.has_value())
+            s.updateSettings ([u = *suggestion] (SessionSettings& st) { st.tapUnit = u; });
+        check (std::abs (s.getPlan().averageBpm - 114.0) < 2.0 && ! s.getTapUnitSuggestion().has_value(), "after one click the tempo fits");
+    }
 
     std::printf ("\n%s\n", failures == 0 ? "ALL OK" : "FAILURES");
     restored.reset();

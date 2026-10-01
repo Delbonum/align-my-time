@@ -53,6 +53,14 @@ public:
     void setClip (std::shared_ptr<const AudioClip> clip) { clipSlot.set (std::move (clip)); }
     void setClick (bool enabled, std::shared_ptr<const TempoMap> tempo);
 
+    /** Balance between track and click: 0 = only the track, 0.5 = both at full level, 1 = only the click. */
+    void setMix (float blend) noexcept
+    {
+        blend = juce::jlimit (0.0f, 1.0f, blend);
+        trackGain.store (juce::jmin (1.0f, 2.0f * (1.0f - blend)));
+        clickLevel.store (juce::jmin (1.0f, 2.0f * blend));
+    }
+
     /** Replaces `buffer` with preview audio if playing; returns false if idle. */
     bool render (juce::AudioBuffer<float>& buffer) noexcept;
 
@@ -70,6 +78,7 @@ private:
     std::atomic<double> endSeconds { 1.0e9 };
     std::atomic<bool> clickEnabled { false };
     std::atomic<bool> finished { false };
+    std::atomic<float> trackGain { 1.0f }, clickLevel { 1.0f };
     SharedClip clipSlot;
     SharedObject<TempoMap> tempoSlot;
     double clickPhase = 0.0;

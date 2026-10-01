@@ -68,14 +68,18 @@ void TempoLane::paint (juce::Graphics& g)
     g.setColour (colours::accent);
     g.strokePath (line, juce::PathStrokeType (2.0f));
 
+    // Target label next to its line (kept inside the lane); the average goes to the other edge.
     g.setFont (monoFont (11.0f));
     g.setColour (colours::grid);
-    g.drawText ("Ziel " + juce::String (target, 1).replaceCharacter ('.', ','), juce::Rectangle<float> (bounds.getRight() - 110.0f, targetY - 17.0f, 100.0f, 14.0f),
+    const float labelY = juce::jlimit (4.0f, bounds.getHeight() - 18.0f, targetY - 17.0f);
+    g.drawText ("Ziel " + juce::String (target, 1).replaceCharacter ('.', ','), juce::Rectangle<float> (bounds.getRight() - 110.0f, labelY, 100.0f, 14.0f),
                 juce::Justification::centredRight);
+    const bool labelAtTop = labelY < bounds.getCentreY();
     g.setColour (colours::muted);
     g.drawText (de ("Ø ") + juce::String (average, 1).replaceCharacter ('.', ',') + de (" · ") + juce::String (minimum, 1).replaceCharacter ('.', ',')
                     + de ("–") + juce::String (maximum, 1).replaceCharacter ('.', ','),
-                bounds.reduced (10.0f, 5.0f), juce::Justification::bottomRight);
+                bounds.reduced (10.0f, 5.0f),
+                labelAtTop ? juce::Justification::bottomRight : juce::Justification::topRight);
 }
 
 } // namespace amt::plugin::ui

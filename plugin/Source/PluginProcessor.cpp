@@ -86,6 +86,7 @@ void AlignMyTimeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     currentSampleRate = sampleRate;
     preview.prepare (sampleRate);
     recorder.prepare (sampleRate, getTotalNumInputChannels());
+    recorder.setArmed (session.getStep() == Step::tap); // ready before the first block arrives
     prepareToPlayForARA (sampleRate, samplesPerBlock, getMainBusNumOutputChannels(), getProcessingPrecision());
 }
 
@@ -178,13 +179,23 @@ void AlignMyTimeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 //==============================================================================
 void AlignMyTimeProcessor::timerCallback()
 {
+    // Before the taps are handled: did a host playback just start?
+    {
+        const bool playingNow = hostPlaying.load();
+        if (playingNow && ! wasHostPlayingForTaps && ! preview.isPlaying())
+            hostPassStart = tracker.nowSeconds();
+        if (! playingNow)
+            hostPassStart.reset();
+        wasHostPlayingForTaps = playingNow;
+    }
+
     // Taps from MIDI
     while (midiTapFifo.getNumReady() > 0)
     {
         const auto scope = midiTapFifo.read (1);
         if (scope.blockSize1 > 0 && session.getStep() == Step::tap)
         {
-            session.addTap (midiTaps[(size_t) scope.startIndex1]);
+            tapAt (midiTaps[(size_t) scope.startIndex1]);
             if (onTapFromMidi)
                 onTapFromMidi();
         }
@@ -196,7 +207,16 @@ void AlignMyTimeProcessor::timerCallback()
     session.getReplacementSlot().collectGarbage();
 
     if (isBoundToARA())
+    {
+        // The host may hand over the events (or enable sample access) only after binding:
+        // keep trying quietly once a second until the track is there.
+        if (! session.hasSource() && loader == nullptr && ++araRetryTicks >= 30)
+        {
+            araRetryTicks = 0;
+            reloadTrack();
+        }
         return;
+    }
 
     // Without ARA: follow the host's tempo and record the track while it plays.
     juce::Optional<juce::AudioPlayHead::PositionInfo> info;
@@ -208,23 +228,74 @@ void AlignMyTimeProcessor::timerCallback()
         if (auto tempo = tempoFromPlayHead (*info))
             session.setProjectTempo (*tempo);
 
-    recorder.setArmed (! session.hasSource() && session.getStep() == Step::tap);
+    // Record whenever the host plays during step 1. Every pass fills in or refreshes the part
+    // that was played, so stopping early or starting in the middle is never a dead end.
+    recorder.setArmed (session.getStep() == Step::tap);
     if (recorder.drain())
         session.sendChangeMessage();
 
     const bool playingNow = hostPlaying.load();
-    if (wasHostPlaying && ! playingNow && recorder.isArmed() && recorder.hasAudio())
+    if (wasHostPlaying && ! playingNow && recorder.hasAudio())
         loadFromRecorder();
     wasHostPlaying = playingNow;
 }
 
 void AlignMyTimeProcessor::loadFromRecorder()
 {
-    recorder.setArmed (false);
-    auto clip = std::make_shared<AudioClip> (recorder.getClip());
+    const auto recorded = recorder.getClip();
     recorder.reset();
 
-    session.setSource (clip, juce::String::fromUTF8 ("Aufnahme vom Spureingang"));
+    float peak = 0.0f;
+    for (const auto& ch : recorded.channels)
+        for (auto v : ch)
+            peak = juce::jmax (peak, std::abs (v));
+
+    if (peak < 1.0e-5f)
+    {
+        loadError = juce::String::fromUTF8 ("Beim Abspielen kam am Plugin kein Signal an \xe2\x80\x93 ist die Spur stummgeschaltet?");
+        session.sendChangeMessage();
+        return;
+    }
+    loadError.clear();
+
+    // Merge with what was recorded before: the new pass wins where they overlap.
+    auto merged = std::make_shared<AudioClip> (recorded);
+    if (auto previous = session.getSource(); previous != nullptr && juce::approximatelyEqual (previous->sampleRate, recorded.sampleRate))
+    {
+        const auto start = std::min<int64_t> (previous->startSample, recorded.startSample);
+        const auto end = std::max<int64_t> (previous->endSample(), recorded.endSample());
+        merged = std::make_shared<AudioClip> (recorded.numChannels(), end - start, recorded.sampleRate, start);
+        merged->mixIn (*previous);
+        for (int c = 0; c < merged->numChannels(); ++c)
+            std::copy (recorded.channels[(size_t) c].begin(), recorded.channels[(size_t) c].end(),
+                       merged->channels[(size_t) c].begin() + (recorded.startSample - start));
+    }
+
+    session.setSource (merged, juce::String::fromUTF8 ("Aufnahme vom Spureingang"));
+}
+
+void AlignMyTimeProcessor::discardRecording()
+{
+    recorder.reset();
+    loadError.clear();
+    session.clearMarkers();
+    session.setSource (nullptr, {});
+}
+
+juce::String AlignMyTimeProcessor::getBlockingReason (bool forRendering) const
+{
+    if (! session.hasSource())
+    {
+        if (isBoundToARA())
+            return loader != nullptr ? juce::String::fromUTF8 ("Spur wird geladen \xe2\x80\xa6")
+                                     : juce::String::fromUTF8 ("Warte auf die Audiodaten von Cubase \xe2\x80\xa6");
+        return juce::String::fromUTF8 ("Spiele die Spur erst einmal in Cubase ab \xe2\x80\x93 sie wird dabei aufgenommen.");
+    }
+    if (session.getMarkers().size() < 2)
+        return juce::String::fromUTF8 ("Mindestens 2 Marker tappen.");
+    if (forRendering && session.isRendering())
+        return juce::String::fromUTF8 ("Wird berechnet \xe2\x80\xa6");
+    return {};
 }
 
 void AlignMyTimeProcessor::reloadTrack()
@@ -232,12 +303,7 @@ void AlignMyTimeProcessor::reloadTrack()
     loadError.clear();
 
     if (! isBoundToARA())
-    {
-        // Start over: the next host playback is recorded.
-        session.setSource (nullptr, {});
-        recorder.reset();
-        return;
-    }
+        return; // without ARA the track arrives by playing it in the host
 
     std::vector<juce::ARAPlaybackRegion*> regions;
     if (auto* renderer = getPlaybackRenderer())
@@ -263,7 +329,17 @@ void AlignMyTimeProcessor::reloadTrack()
 void AlignMyTimeProcessor::tapNow()
 {
     if (tracker.isRunning())
-        session.addTap (tracker.nowSeconds());
+        tapAt (tracker.nowSeconds());
+}
+
+void AlignMyTimeProcessor::tapAt (double songSeconds)
+{
+    if (hostPassStart.has_value())
+    {
+        session.beginTapping (juce::jmin (*hostPassStart, songSeconds - 0.1));
+        hostPassStart.reset();
+    }
+    session.addTap (songSeconds);
 }
 
 void AlignMyTimeProcessor::startPreview (double fromSeconds, bool aligned, bool withLeadIn, bool withClick)

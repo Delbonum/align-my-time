@@ -6,19 +6,50 @@
 namespace amt
 {
 
-double gridQuarters (const TempoMap& tempo, TapMode mode, int firstBar, int index)
+double gridQuarters (const TempoMap& tempo, TapUnit unit, int firstBar, int index)
 {
-    if (mode == TapMode::downbeats)
-        return tempo.barsToQuarters ((double) (firstBar + index));
+    switch (unit)
+    {
+        case TapUnit::twoBars: return tempo.barsToQuarters ((double) firstBar + 2.0 * index);
+        case TapUnit::bar:     return tempo.barsToQuarters ((double) (firstBar + index));
+        case TapUnit::halfBar: return tempo.barsToQuarters ((double) firstBar + 0.5 * index);
+        case TapUnit::beat:
+        case TapUnit::halfBeat:
+        default: break;
+    }
 
-    // Beat mode: walk beat by beat so that time-signature changes are honoured.
+    // Beats: walk step by step so that time-signature changes are honoured.
+    const double fraction = unit == TapUnit::halfBeat ? 0.5 : 1.0;
     double q = tempo.barsToQuarters ((double) firstBar);
     for (int i = 0; i < index; ++i)
-        q += tempo.signatureAt (q + 1.0e-9).quartersPerBeat();
+        q += fraction * tempo.signatureAt (q + 1.0e-9).quartersPerBeat();
     return q;
 }
 
-AlignmentPlan planAlignment (const std::vector<Marker>& markers, const TempoMap& projectTempo, TapMode mode,
+std::optional<TapUnit> suggestTapUnit (const AlignmentPlan& plan, const TempoMap& projectTempo, TapUnit current)
+{
+    if (plan.targetSeconds.size() < 4 || plan.averageBpm <= 0.0)
+        return std::nullopt;
+
+    // Tempo the taps would imply for each unit, compared with the project tempo.
+    const auto quartersOf = [&] (TapUnit u) { return gridQuarters (projectTempo, u, plan.firstBar, 1) - gridQuarters (projectTempo, u, plan.firstBar, 0); };
+    const double target = projectTempo.bpmAt (plan.targetSeconds.front());
+    const double currentQuarters = quartersOf (current);
+
+    auto deviation = [&] (TapUnit u) { return std::abs (std::log (plan.averageBpm * quartersOf (u) / currentQuarters / target)); };
+
+    TapUnit best = current;
+    for (auto u : tapUnitsBySize)
+        if (deviation (u) < deviation (best))
+            best = u;
+
+    // Only suggest when the current reading is far off (> ~25 %) and the other one is close (< ~12 %).
+    if (best != current && deviation (current) > std::log (1.25) && deviation (best) < std::log (1.12))
+        return best;
+    return std::nullopt;
+}
+
+AlignmentPlan planAlignment (const std::vector<Marker>& markers, const TempoMap& projectTempo, TapUnit unit,
                              std::optional<int> firstBarOverride, WarpMap::Ends ends)
 {
     AlignmentPlan plan;
@@ -38,7 +69,7 @@ AlignmentPlan planAlignment (const std::vector<Marker>& markers, const TempoMap&
     std::vector<double> quarters;
     for (size_t i = 0; i < sources.size(); ++i)
     {
-        const double q = gridQuarters (projectTempo, mode, plan.firstBar, (int) i);
+        const double q = gridQuarters (projectTempo, unit, plan.firstBar, (int) i);
         quarters.push_back (q);
         const double target = projectTempo.quartersToSeconds (q);
         plan.targetSeconds.push_back (target);

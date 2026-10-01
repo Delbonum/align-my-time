@@ -24,6 +24,7 @@ AlignMyTimeEditor::AlignMyTimeEditor (AlignMyTimeProcessor& p)
     showStep (processor.getSession().getStep());
 
     setWantsKeyboardFocus (true);
+    addMouseListener (this, true);
     setSize (1120, 720);
     startTimerHz (30);
 }
@@ -79,8 +80,13 @@ void AlignMyTimeEditor::timerCallback()
     if (auto* page = currentPage())
         page->refresh();
 
-    // Keep the space bar for tapping even after clicking around.
-    if (shownStep == Step::tap && ! hasKeyboardFocus (true) && isShowing())
+}
+
+void AlignMyTimeEditor::mouseDown (const juce::MouseEvent& e)
+{
+    // A click anywhere in the plug-in brings the keyboard back (space = tap), but we never take
+    // it on our own: when you click into Cubase, Cubase gets its keys.
+    if (e.eventComponent != nullptr && ! e.eventComponent->getWantsKeyboardFocus())
         grabKeyboardFocus();
 }
 

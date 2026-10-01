@@ -20,7 +20,8 @@ enum class Destination { newTrack, replaceInTrack };
 
 struct SessionSettings
 {
-    TapMode tapMode = TapMode::downbeats;
+    TapUnit tapUnit = TapUnit::bar;
+    float clickBlend = 0.5f;            ///< preview mix: 0 = only the track, 1 = only the click
     AlignMethod method = AlignMethod::timeStretch;
     StretchQuality quality = StretchQuality::rhythmic;
     double crossfadeMs = 10.0;
@@ -78,6 +79,10 @@ public:
     void setSnapToAttacks (bool shouldSnap);
 
     const AlignmentPlan& getPlan() const { return plan; }
+
+    /** Set when the taps fit the project tempo much better with another grid unit
+        (e.g. tapped on 1 and 3 while "every one" was selected). */
+    std::optional<TapUnit> getTapUnitSuggestion() const { return tapUnitSuggestion; }
     bool canAlign() const { return hasSource() && markers.size() >= 2; }
 
     //==============================================================================
@@ -131,6 +136,7 @@ private:
     std::vector<MarkerIssue> issues;
     int selectedMarker = -1;
     AlignmentPlan plan;
+    std::optional<TapUnit> tapUnitSuggestion;
 
     SessionSettings settings;
     Step step = Step::tap;
@@ -150,6 +156,12 @@ private:
 };
 
 juce::String formatBpm (double bpm);
+
+/** "1 Takt", "½ Takt", "1 Zählzeit" ... */
+juce::String describeTapUnit (TapUnit unit);
+
+/** Where grid step `index` lands, e.g. "Takt 7" or "Takt 7, Zählzeit 3". */
+juce::String describeGridPosition (const TempoMap& tempo, TapUnit unit, int firstBar, int index);
 juce::String formatTime (double seconds);
 
 } // namespace amt::plugin

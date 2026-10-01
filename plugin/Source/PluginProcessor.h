@@ -57,6 +57,12 @@ public:
     InputRecorder& getRecorder() { return recorder; }
     bool isHostPlaying() const { return hostPlaying.load(); }
 
+    /** Why the user cannot go on right now (empty if nothing blocks). Shown next to disabled buttons. */
+    juce::String getBlockingReason (bool forRendering) const;
+
+    /** Non-ARA: throws away the recorded track and markers. */
+    void discardRecording();
+
     /** Tap with the space bar / mouse: the song time that is audible right now. */
     void tapNow();
     double getAudiblePositionSeconds() const { return tracker.nowSeconds(); }
@@ -64,6 +70,7 @@ public:
 
     /** Plays the original track (A) or the aligned result (B) in the plug-in. */
     void startPreview (double fromSeconds, bool aligned, bool withLeadIn, bool withClick);
+    void setPreviewMix (float blend) { preview.setMix (blend); }
     void stopPreview();
 
     std::function<void()> onTapFromMidi; // message thread
@@ -82,6 +89,13 @@ private:
 
     std::atomic<bool> hostPlaying { false };
     bool wasHostPlaying = false;
+    bool wasHostPlayingForTaps = false;
+    int araRetryTicks = 0;
+
+    // A host playback in step 1 is a tapping pass from where it started; the pass begins
+    // with its first tap, so merely listening never discards markers.
+    std::optional<double> hostPassStart;
+    void tapAt (double songSeconds);
     double currentSampleRate = 48000.0;
 
     // MIDI taps: song times collected on the audio thread.

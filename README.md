@@ -15,15 +15,15 @@ Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
 ## Benutzung in Cubase
 
 1. Die Events der Spur auswählen und dann **Audio › Erweiterungen › Align my Time** wählen (ARA). Alle Events der Spur landen im Plugin als *ein* großes Event.
-2. **Leertaste** startet die Wiedergabe mit 2 s Vorlauf. Danach jede Eins (oder jede Zählzeit) mittippen. Verpasste Schläge und Doppel-Taps werden automatisch korrigiert. Jeder Marker rastet auf den nächsten Anschlag ein (±70 ms).
-3. **Prüfen:** Marker ziehen, mit ←/→ um 5 ms verschieben (mit Shift um 1 ms) oder per Doppelklick neu setzen. „Ab hier neu tappen“ wiederholt nur den Rest. Unter „Erster Marker = Takt“ legst du fest, auf welchem Projekttakt der erste Marker landet.
+2. **Leertaste** startet die Wiedergabe im Plugin mit 2 s Vorlauf (oder du spielst in Cubase ab und tappst mit). Danach jede Eins (oder jede Zählzeit) mittippen. Verpasste Schläge und Doppel-Taps werden automatisch korrigiert. Jeder Marker rastet auf den nächsten Anschlag ein (±70 ms).
+3. **Prüfen:** Marker ziehen, mit ←/→ um 5 ms verschieben (mit Shift um 1 ms) oder per Doppelklick neu setzen. „Ab hier neu tappen“ wiederholt nur den Rest. Unter „1 Marker =“ stellst du um, wie weit zwei Taps auseinander liegen (z. B. ½ Takt, wenn du auf 1 und 3 getippt hast). Das Plugin schlägt das auch selbst vor. Unter „Erster Marker = Takt“ legst du fest, auf welchem Projekttakt der erste Marker landet.
 4. **Rendern:**
    - *Als neue Spur*: Das Plugin schreibt eine WAV-Datei nach `Musik/Align my Time/`. Zieh die Kachel auf eine neue Spur. Mit „ab Projektanfang“ gehört die Datei an Takt 1.
    - *In dieser Spur ersetzen*: Die Spur spielt die angepasste Version. Das lässt sich jederzeit zurückschalten. Zum Festschreiben nutzt du Cubases „Render in Place“.
 
-**Ohne ARA** (andere DAWs, oder als normaler Insert) setzt du das Plugin als Insert auf die Spur und spielst das Projekt einmal ab. Das Plugin nimmt die Spur dabei auf, und du kannst im selben Durchgang mittappen.
+**Ohne ARA** (andere DAWs, oder als normaler Insert) setzt du das Plugin als Insert auf die Spur und spielst das Projekt einmal ab. Das Plugin nimmt die Spur dabei auf, und du kannst im selben Durchgang mittappen. Jedes weitere Abspielen in Schritt 1 ergänzt die Aufnahme. Oben links zeigt „ARA“ oder „Insert“, in welchem Modus das Plugin gerade läuft.
 
-Die Entscheidungen hinter dem Konzept stehen in [docs/ENTSCHEIDUNGEN.md](docs/ENTSCHEIDUNGEN.md).
+Die Entscheidungen hinter dem Konzept stehen in [docs/ENTSCHEIDUNGEN.md](docs/ENTSCHEIDUNGEN.md), lokales Weiterentwickeln in [docs/ENTWICKLUNG.md](docs/ENTWICKLUNG.md).
 
 ## Bauen
 

@@ -235,7 +235,7 @@ void RenderPage::sessionChanged()
     after.setClip (session.getAligned());
     after.setMarkers (session.getAligned() != nullptr ? targets : std::vector<Marker> {});
     after.setGridLines (projectBarLines (start, end));
-    const int firstLabel = settings.tapMode == TapMode::downbeats ? plan.firstBar + 1 : 1;
+    const int firstLabel = settings.tapUnit == TapUnit::bar ? plan.firstBar + 1 : 1;
     before.setMarkerLabels (firstLabel);
     after.setMarkerLabels (firstLabel);
 
@@ -287,6 +287,7 @@ void RenderPage::refresh()
 
     configureButton (renderButton, text, icon, ButtonKind::primary);
     renderButton.setEnabled (session.canAlign());
+    renderButton.setTooltip (processor.getBlockingReason (true));
     listen.setEnabled (session.getAligned() != nullptr);
     configureButton (listen, processor.getPreview().isPlaying() ? juce::String ("Stopp") : de ("Anhören"),
                      processor.getPreview().isPlaying() ? "stop" : "headphones", ButtonKind::ghost);

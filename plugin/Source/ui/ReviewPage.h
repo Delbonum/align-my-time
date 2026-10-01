@@ -29,7 +29,10 @@ private:
     WaveformView wave;
     TempoLane tempoLane;
 
-    juce::TextButton nudgeLeft, nudgeRight, addMarker, removeMarker, retap, barDown, barUp;
+    void stepUnit (int direction);
+
+    juce::TextButton nudgeLeft, nudgeRight, addMarker, removeMarker, retap, barDown, barUp, unitBigger, unitSmaller;
+    juce::TextButton applySuggestion;
     ToggleRow snap { "An Transienten einrasten" };
 
     ChoiceCard stretchCard { "Time-Stretch", de ("Jeder Takt wird gedehnt/gestaucht. Tonhöhe bleibt unverändert.") };
@@ -40,10 +43,11 @@ private:
     SegmentedControl ab { { "Original", "Angepasst" } };
     juce::TextButton play;
     ToggleRow click { "Klick im Projekttempo" };
+    juce::Slider mix { juce::Slider::LinearHorizontal, juce::Slider::NoTextBox };
 
     juce::TextButton back, next;
 
-    juce::Rectangle<int> leftColumn, middleColumn, rightColumn, footer, offsetBox, barRow;
+    juce::Rectangle<int> leftColumn, middleColumn, rightColumn, footer, offsetBox, barRow, unitRow, mixRow, bannerRow;
     bool playWhenRendered = false;
 };
 

@@ -24,15 +24,19 @@ struct AlignmentPlan
 /** Maps markers onto the project's bar (or beat) grid.
 
     The first marker lands on the project bar nearest to it (or `firstBarOverride`); every
-    following marker advances one bar (downbeat mode) or one beat (beat mode), following the
-    project's time signatures. Requires at least two markers; with fewer an identity plan is returned. */
+    following marker advances one grid unit (bar, half bar, beat ...), following the project's
+    time signatures. Requires at least two markers; with fewer an identity plan is returned. */
 AlignmentPlan planAlignment (const std::vector<Marker>& markers,
                              const TempoMap& projectTempo,
-                             TapMode mode,
+                             TapUnit unit,
                              std::optional<int> firstBarOverride = std::nullopt,
                              WarpMap::Ends ends = WarpMap::Ends::continueTempo);
 
 /** Quarter-note position of grid step `index` counted from bar `firstBar`. */
-double gridQuarters (const TempoMap& tempo, TapMode mode, int firstBar, int index);
+double gridQuarters (const TempoMap& tempo, TapUnit unit, int firstBar, int index);
+
+/** The grid unit whose implied tempo best matches the project, if it is clearly better than
+    `current` (e.g. tapped on 1 and 3 while "every one" was selected). */
+std::optional<TapUnit> suggestTapUnit (const AlignmentPlan& plan, const TempoMap& projectTempo, TapUnit current);
 
 } // namespace amt

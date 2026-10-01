@@ -7,12 +7,19 @@ namespace amt
 
 class OnsetDetector;
 
-/** What the user taps along to. */
-enum class TapMode
+/** How far apart the taps are on the project grid. Step 1 offers "every one" (bar) and
+    "every beat"; the review step can reinterpret the taps, e.g. when someone tapped on 1 and 3. */
+enum class TapUnit
 {
-    downbeats, ///< one tap per bar, on the "one"
-    beats      ///< one tap per beat (counts as given by the time signature)
+    twoBars,  ///< every other bar
+    bar,      ///< one tap per bar, on the "one"
+    halfBar,  ///< e.g. on 1 and 3 in 4/4
+    beat,     ///< one tap per beat (counts as given by the time signature)
+    halfBeat  ///< eighths in 4/4
 };
+
+/** Grid units from largest to smallest. */
+constexpr TapUnit tapUnitsBySize[] { TapUnit::twoBars, TapUnit::bar, TapUnit::halfBar, TapUnit::beat, TapUnit::halfBeat };
 
 enum class MarkerOrigin
 {
