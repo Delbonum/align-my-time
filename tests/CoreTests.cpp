@@ -134,6 +134,10 @@ void testTempoMap()
     // Beat grid follows the signature change: bar 1 starts at quarter 4, its beats are quarters.
     CHECK_NEAR (amt::gridQuarters (changing, amt::TapMode::beats, 1, 5), 9.0, 1e-9);
 
+    amt::TempoMap pickup ({ { 0.0, 0.0 }, { 1.0, 2.0 } }, { { 1.0, 4, 4 } }); // first bar line at quarter 1
+    CHECK_NEAR (pickup.barsToQuarters (2.0), 9.0, 1e-9);
+    CHECK_NEAR (pickup.quartersToBars (0.0), -0.25, 1e-9);
+
     amt::TempoMap sixEight ({ { 0.0, 0.0 }, { 1.0, 2.0 } }, { { 0.0, 6, 8 } });
     CHECK_NEAR (sixEight.barsToQuarters (1.0), 3.0, 1e-9);
     CHECK_NEAR (amt::gridQuarters (sixEight, amt::TapMode::beats, 0, 6), 3.0, 1e-9);

@@ -41,12 +41,9 @@ TempoMap::TempoMap (std::vector<TempoPoint> points, std::vector<TimeSignature> s
     std::stable_sort (timeSignatures.begin(), timeSignatures.end(),
                       [] (const TimeSignature& a, const TimeSignature& b) { return a.quarters < b.quarters; });
 
-    if (timeSignatures.empty() || timeSignatures.front().quarters > 0.0)
-    {
-        auto first = timeSignatures.empty() ? TimeSignature {} : timeSignatures.front();
-        first.quarters = 0.0;
-        timeSignatures.insert (timeSignatures.begin(), first);
-    }
+    // The first signature marks the first bar line (as in ARA); without one, bars start at quarter 0.
+    if (timeSignatures.empty())
+        timeSignatures.push_back ({});
 }
 
 double TempoMap::secondsToQuarters (double seconds) const noexcept
@@ -106,8 +103,9 @@ const TimeSignature& TempoMap::signatureAt (double quarters) const noexcept
 
 double TempoMap::quartersToBars (double quarters) const noexcept
 {
-    if (quarters <= 0.0)
-        return quarters / timeSignatures.front().quartersPerBar();
+    const auto& first = timeSignatures.front();
+    if (quarters <= first.quarters)
+        return (quarters - first.quarters) / first.quartersPerBar();
 
     double bars = 0.0;
     for (size_t i = 0; i < timeSignatures.size(); ++i)
@@ -126,7 +124,7 @@ double TempoMap::quartersToBars (double quarters) const noexcept
 double TempoMap::barsToQuarters (double bars) const noexcept
 {
     if (bars <= 0.0)
-        return bars * timeSignatures.front().quartersPerBar();
+        return timeSignatures.front().quarters + bars * timeSignatures.front().quartersPerBar();
 
     double barsSoFar = 0.0;
     for (size_t i = 0; i < timeSignatures.size(); ++i)

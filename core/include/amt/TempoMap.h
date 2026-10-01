@@ -44,8 +44,8 @@ public:
     /** Tempo in quarter notes per minute at the given song time. */
     double bpmAt (double seconds) const noexcept;
 
-    /** Bars are zero-based and fractional: bar 0.0 is the first bar line (quarter 0),
-        bar 2.5 is half way through the third bar. */
+    /** Bars are zero-based and fractional: bar 0.0 is the bar line of the first time signature
+        (quarter 0 unless the host says otherwise), bar 2.5 is half way through the third bar. */
     double quartersToBars (double quarters) const noexcept;
     double barsToQuarters (double bars) const noexcept;
 
