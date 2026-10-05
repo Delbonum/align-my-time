@@ -96,7 +96,7 @@ TapPage::TapPage (AlignMyTimeProcessor& p) : Page (p), pad (std::make_unique<Tap
     addAndMakeVisible (leadIn);
 
     mode.onChange = [this] (int i) {
-        session.updateSettings ([i] (SessionSettings& s) { s.tapUnit = i == 0 ? TapUnit::bar : TapUnit::beat; });
+        session.updateSettings ([i] (SessionSettings& s) { s.tapUnit = i == 0 ? TapUnit::bar : i == 1 ? TapUnit::halfBar : TapUnit::beat; });
     };
     addAndMakeVisible (mode);
 
@@ -252,7 +252,9 @@ void TapPage::paint (juce::Graphics& g)
 void TapPage::sessionChanged()
 {
     const auto& settings = session.getSettings();
-    mode.setSelected (settings.tapUnit == TapUnit::beat || settings.tapUnit == TapUnit::halfBeat ? 1 : 0);
+    mode.setSelected (settings.tapUnit == TapUnit::beat || settings.tapUnit == TapUnit::halfBeat ? 2
+                      : settings.tapUnit == TapUnit::halfBar                                    ? 1
+                                                                                                : 0);
     leadIn.setToggleState (settings.leadIn, juce::dontSendNotification);
 
     wave.setClip (session.getSource());
@@ -397,11 +399,7 @@ void TapPage::togglePlayback()
 
 bool TapPage::handleKey (const juce::KeyPress& key)
 {
-    // Ctrl+Space & co. belong to the host (e.g. Cubase's transport moved to Ctrl+Space).
-    if (key.getModifiers().isCtrlDown() || key.getModifiers().isCommandDown())
-        return false;
-
-    if (key.getKeyCode() == tapKeyPress (getTapKey()).getKeyCode())
+    if (matchesTapKey (key))
     {
         // Nothing to play here yet (insert mode before the first pass): let the host have the key,
         // so the space bar starts the host's playback as usual.
@@ -411,6 +409,10 @@ bool TapPage::handleKey (const juce::KeyPress& key)
         tap();
         return true;
     }
+
+    // Other Ctrl/Cmd combinations (e.g. Ctrl+Space for Cubase's transport) belong to the host.
+    if (key.getModifiers().isCtrlDown() || key.getModifiers().isCommandDown())
+        return false;
 
     if (key == juce::KeyPress::spaceKey)
     {

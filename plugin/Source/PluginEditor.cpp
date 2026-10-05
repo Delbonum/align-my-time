@@ -22,8 +22,9 @@ void TapKeyPoller::hiResTimerCallback()
     }
 
     const bool down = juce::KeyPress::isKeyCurrentlyDown (keyCode.load());
-    if (down && ! wasDown && ! juce::ModifierKeys::getCurrentModifiersRealtime().isCtrlDown()
-        && processor.isAudioRunning())
+    const auto mods = juce::ModifierKeys::getCurrentModifiersRealtime();
+    const bool modifiersMatch = (mods.isCtrlDown() || mods.isCommandDown()) == needsCtrl.load() && mods.isAltDown() == needsAlt.load();
+    if (down && ! wasDown && modifiersMatch && processor.isAudioRunning())
     {
         processor.pushKeyTap (processor.getAudiblePositionSeconds());
     }
@@ -184,7 +185,10 @@ void AlignMyTimeEditor::timerCallback()
         page->refresh();
 
     // The poller only listens while tapping makes sense and the host app is in front.
-    keyPoller.keyCode.store (tapKeyPress (getTapKey()).getKeyCode());
+    const auto tapKey = currentTapKeyPress();
+    keyPoller.keyCode.store (tapKey.getKeyCode());
+    keyPoller.needsCtrl.store (tapKey.getModifiers().isCtrlDown() || tapKey.getModifiers().isCommandDown());
+    keyPoller.needsAlt.store (tapKey.getModifiers().isAltDown());
     keyPoller.enabled.store (TapKeyPoller::isSupported() && settings == nullptr && shownStep == Step::tap && isShowing()
                              && processor.isAudioRunning() && juce::Process::isForegroundProcess());
 }
@@ -204,7 +208,7 @@ bool AlignMyTimeEditor::keyPressed (const juce::KeyPress& key)
 
     // While the poller listens (Windows), it does the tapping: swallow the key event so it isn't
     // counted twice.
-    if (shownStep == Step::tap && key == tapKeyPress (getTapKey()) && keyPoller.enabled.load())
+    if (shownStep == Step::tap && matchesTapKey (key) && keyPoller.enabled.load())
         return true;
 
     if (auto* page = currentPage())

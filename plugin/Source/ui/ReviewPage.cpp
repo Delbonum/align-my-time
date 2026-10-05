@@ -6,7 +6,33 @@ namespace amt::plugin::ui
 ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
 {
     wave.setInteractive (true);
-    wave.setTooltip (tr ("Marker ziehen zum Verschieben · Doppelklick fügt einen Marker hinzu"));
+    wave.setZoomable (true);
+    wave.onClickTime = [this] (double t) { startPreviewAt (t); };
+    wave.onViewChanged = [this] { viewChanged(); };
+
+    scrollbar.setAutoHide (false);
+    scrollbar.addListener (this);
+    addAndMakeVisible (scrollbar);
+
+    configureButton (zoomOut, {}, "minus", ButtonKind::ghost);
+    zoomOut.setTooltip (tr ("Herauszoomen (Mausrad)"));
+    zoomOut.onClick = [this] { wave.zoomBy (0.5, 0.5 * (wave.getStartSeconds() + wave.getEndSeconds())); };
+    configureButton (zoomIn, {}, "plus", ButtonKind::ghost);
+    zoomIn.setTooltip (tr ("Hineinzoomen (Mausrad)"));
+    zoomIn.onClick = [this] {
+        // Zoom towards the selected marker if there is one.
+        const int sel = session.getSelectedMarker();
+        const double anchor = sel >= 0 ? session.getMarkers()[(size_t) sel].seconds : 0.5 * (wave.getStartSeconds() + wave.getEndSeconds());
+        wave.zoomBy (2.0, anchor);
+    };
+    configureButton (zoomFit, tr ("Alles"), "", ButtonKind::ghost);
+    zoomFit.setTooltip (tr ("Ganze Aufnahme zeigen"));
+    zoomFit.onClick = [this] { wave.zoomToFit(); };
+    for (auto* b : { &zoomOut, &zoomIn, &zoomFit })
+    {
+        b->setWantsKeyboardFocus (false);
+        addAndMakeVisible (b);
+    }
     wave.onSelectMarker = [this] (int i) { session.selectMarker (i); };
     wave.onMoveMarker = [this] (int i, double t) { session.moveMarker (i, t); };
     wave.onAddMarker = [this] (double t) { session.addMarker (t); };
@@ -129,8 +155,15 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
 void ReviewPage::resized()
 {
     auto area = layoutFrame (footer);
-    wave.setBounds (area.removeFromTop (150).reduced (24, 0));
-    area.removeFromTop (10);
+    wave.setBounds (area.removeFromTop (132).reduced (24, 0));
+    area.removeFromTop (4);
+    auto zoomRow = area.removeFromTop (24).reduced (24, 0);
+    zoomFit.setBounds (zoomRow.removeFromRight (64));
+    zoomIn.setBounds (zoomRow.removeFromRight (28).translated (-4, 0));
+    zoomOut.setBounds (zoomRow.removeFromRight (28).translated (-8, 0));
+    zoomRow.removeFromRight (12);
+    scrollbar.setBounds (zoomRow.withSizeKeepingCentre (zoomRow.getWidth(), 12));
+    area.removeFromTop (6);
     tempoLane.setBounds (area.removeFromTop (66).reduced (24, 0));
     area.removeFromTop (8);
     bannerRow = area.removeFromTop (40).reduced (24, 0);
@@ -318,7 +351,10 @@ void ReviewPage::sessionChanged()
 
     wave.setClip (session.getSource());
     const auto [start, end] = viewRange();
-    wave.setTimeRange (start, end);
+    wave.setFullRange (start, end); // keeps the user's zoom
+    wave.setDragNeedsCtrl (markerDragNeedsCtrl());
+    wave.setTooltip (markerDragNeedsCtrl() ? tr ("Klick: ab hier abspielen · Strg+Ziehen: Marker verschieben · Doppelklick: Marker hinzufügen · Mausrad: Zoom")
+                                           : tr ("Ziehen: Marker verschieben · Strg+Klick: ab hier abspielen · Doppelklick: Marker hinzufügen · Mausrad: Zoom"));
     wave.setMarkers (markers, session.getSelectedMarker());
     wave.setMarkerLabels (settings.tapUnit == TapUnit::bar ? session.getPlan().firstBar + 1 : 1);
     wave.setSelectedInfo (selectedInfo());
@@ -326,7 +362,8 @@ void ReviewPage::sessionChanged()
     std::vector<double> seconds;
     for (const auto& m : markers)
         seconds.push_back (m.seconds);
-    tempoLane.setData (session.getPlan(), seconds, session.getProjectTempo(), start, end);
+    tempoLane.setData (session.getPlan(), seconds, session.getProjectTempo(), wave.getStartSeconds(), wave.getEndSeconds());
+    viewChanged();
 
     const bool hasSelection = session.getSelectedMarker() >= 0;
     nudgeLeft.setEnabled (hasSelection);
@@ -356,7 +393,11 @@ void ReviewPage::sessionChanged()
     if (playWhenRendered && ! session.isRendering() && session.isAlignedUpToDate())
     {
         playWhenRendered = false;
-        startPreviewNow();
+        if (playFromAfterRender.has_value())
+            startPreviewAt (*playFromAfterRender);
+        else
+            startPreviewNow();
+        playFromAfterRender.reset();
     }
 
     repaint();
@@ -377,6 +418,12 @@ void ReviewPage::refresh()
         wave.setPlayhead (playing ? std::optional<double> (preview.positionSeconds()) : std::nullopt);
     }
 
+    // Follow the playhead page by page when zoomed in.
+    if (playing)
+        if (auto clip = session.getSource())
+            wave.keepVisible (ab.getSelected() == 1 ? session.getPlan().warp.targetToSource (preview.positionSeconds()) : preview.positionSeconds());
+    wave.setDragNeedsCtrl (markerDragNeedsCtrl());
+
     const bool waiting = playWhenRendered && session.isRendering();
     configureButton (play, waiting ? tr ("Wird berechnet … ") + juce::String (juce::roundToInt (session.getRenderProgress() * 100.0)) + " %"
                                    : playing ? tr ("Stopp") : tr ("Abspielen"),
@@ -394,12 +441,29 @@ void ReviewPage::togglePreview()
     startPreviewNow();
 }
 
+void ReviewPage::viewChanged()
+{
+    scrollbar.setRangeLimits (wave.getFullStart(), wave.getFullEnd(), juce::dontSendNotification);
+    scrollbar.setCurrentRange (wave.getStartSeconds(), wave.getEndSeconds() - wave.getStartSeconds(), juce::dontSendNotification);
+    tempoLane.setViewRange (wave.getStartSeconds(), wave.getEndSeconds());
+    zoomFit.setEnabled (wave.isZoomed());
+}
+
+void ReviewPage::scrollBarMoved (juce::ScrollBar*, double newRangeStart)
+{
+    const double length = wave.getEndSeconds() - wave.getStartSeconds();
+    wave.setView (newRangeStart, newRangeStart + length);
+}
+
 void ReviewPage::startPreviewNow()
 {
     const auto& markers = session.getMarkers();
     const int sel = session.getSelectedMarker();
-    const double from = sel >= 0 ? markers[(size_t) sel].seconds - 1.0 : (session.hasSource() ? session.getSource()->startSeconds() : 0.0);
+    startPreviewAt (sel >= 0 ? markers[(size_t) sel].seconds - 1.0 : (session.hasSource() ? session.getSource()->startSeconds() : 0.0));
+}
 
+void ReviewPage::startPreviewAt (double from)
+{
     if (ab.getSelected() == 0)
     {
         processor.startPreview (from, false, false, false);
@@ -409,6 +473,7 @@ void ReviewPage::startPreviewNow()
     if (! session.isAlignedUpToDate())
     {
         playWhenRendered = true;
+        playFromAfterRender = from;
         if (! session.isRendering())
             session.startRender();
         return;

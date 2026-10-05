@@ -3,6 +3,19 @@
 Versionen nach [Semantic Versioning](https://semver.org/lang/de/): **MAJOR.MINOR.PATCH**.
 PATCH = Fehlerbehebungen, MINOR = neue Funktionen, MAJOR = inkompatible Änderungen (z. B. gespeicherte Projekte).
 
+## 1.2.0 – 2026-10-05
+
+### Neu
+- **Zoom und Scrollen** in „Prüfen“: Mausrad oder Trackpad-Pinch zoomt um die Mausposition, Shift+Mausrad oder seitliches Wischen scrollt; dazu Scrollleiste und die Buttons −, + und „Alles“. Beim Abspielen blättert die Ansicht mit.
+- **Abspielen ab einer Stelle:** Klick in die Wellenform spielt ab dort (Original oder angepasst). Marker verschiebt man mit **Strg+Ziehen**; in den Einstellungen lässt sich das umkehren.
+- **„1 und 3“** als dritte Option bei „Ich tippe auf …“.
+- **Tap-Taste:** zusätzlich „Strg+Leertaste“ und „Eigene Taste“ (beliebige Taste festlegen).
+
+### Geändert
+- **Tab ist die Standard-Tap-Taste**, weil die Leertaste in DAWs meist den Transport steuert.
+- Einstellungen mit Navigation links (Allgemein, Bedienung, Credits) und Inhalt rechts.
+- Einstellungs-Button als Zahnrad; schärferes Logo oben links.
+
 ## 1.1.1 – 2026-10-01
 
 ### Geändert

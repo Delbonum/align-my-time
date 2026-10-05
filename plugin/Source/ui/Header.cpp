@@ -160,8 +160,11 @@ void Header::paint (juce::Graphics& g)
     g.fillRect (getLocalBounds().removeFromBottom (1));
 
     // Logo = the app icon
-    static const auto icon = juce::ImageCache::getFromMemory (AlignMyTimeAssets::icon256_png, AlignMyTimeAssets::icon256_pngSize);
-    const auto logo = juce::Rectangle<float> (20.0f, (getHeight() - 30) * 0.5f, 30.0f, 30.0f);
+    // Pre-scaled with high quality (2x for HiDPI): a 256 px icon drawn at 30 px directly looks noisy.
+    static const auto icon = juce::ImageCache::getFromMemory (AlignMyTimeAssets::icon256_png, AlignMyTimeAssets::icon256_pngSize)
+                                 .rescaled (64, 64, juce::Graphics::highResamplingQuality);
+    const auto logo = juce::Rectangle<float> (20.0f, (getHeight() - 32) * 0.5f, 32.0f, 32.0f);
+    g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
     g.drawImage (icon, logo, juce::RectanglePlacement::centred);
 
     g.setColour (colours::text);

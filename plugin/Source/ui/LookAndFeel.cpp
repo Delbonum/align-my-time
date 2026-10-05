@@ -36,6 +36,8 @@ AmtLookAndFeel::AmtLookAndFeel()
     setColour (juce::Slider::textBoxBackgroundColourId, colours::background);
     setColour (juce::TooltipWindow::backgroundColourId, juce::Colours::white);
     setColour (juce::TooltipWindow::textColourId, colours::ink);
+    setColour (juce::ScrollBar::thumbColourId, colours::muted.withAlpha (0.6f));
+    setColour (juce::ScrollBar::trackColourId, colours::background);
     setColour (juce::PopupMenu::backgroundColourId, colours::panel2);
     setColour (juce::PopupMenu::textColourId, colours::text);
     setColour (juce::PopupMenu::highlightedBackgroundColourId, colours::accent);
@@ -58,6 +60,21 @@ void AmtLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& butt
     auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
     const auto kind = kindOf (button);
     const bool segment = button.getProperties().contains ("segment");
+
+    if (button.getProperties().contains ("nav"))
+    {
+        if (button.getToggleState() || highlighted)
+        {
+            g.setColour (button.getToggleState() ? colours::panel2 : colours::panel2.withAlpha (0.5f));
+            g.fillRoundedRectangle (bounds, 8.0f);
+        }
+        if (button.getToggleState())
+        {
+            g.setColour (colours::accent);
+            g.fillRoundedRectangle (bounds.withWidth (4.0f).reduced (0.0f, 8.0f), 2.0f);
+        }
+        return;
+    }
 
     if (segment)
     {
@@ -109,6 +126,14 @@ void AmtLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button
 {
     const auto kind = kindOf (button);
     const bool segment = button.getProperties().contains ("segment");
+    if (button.getProperties().contains ("nav"))
+    {
+        g.setColour (button.getToggleState() ? colours::text : colours::muted);
+        g.setFont (uiFont (14.0f, true));
+        g.drawText (button.getButtonText(), button.getLocalBounds().withTrimmedLeft (18), juce::Justification::centredLeft);
+        return;
+    }
+
     auto colour = kind == ButtonKind::primary ? colours::ink : colours::text;
     if (segment && ! button.getToggleState())
         colour = colours::muted;
@@ -200,7 +225,9 @@ void drawSectionLabel (juce::Graphics& g, juce::Rectangle<int> area, const juce:
 {
     g.setColour (colours::muted);
     g.setFont (uiFont (11.0f, true).withExtraKerningFactor (0.08f));
-    g.drawText (text.toUpperCase(), area, juce::Justification::centredLeft);
+    // JUCE's toUpperCase leaves German umlauts alone.
+    const auto upper = text.toUpperCase().replace (utf8 ("ä"), utf8 ("Ä")).replace (utf8 ("ö"), utf8 ("Ö")).replace (utf8 ("ü"), utf8 ("Ü"));
+    g.drawText (upper, area, juce::Justification::centredLeft);
 }
 
 //==============================================================================
@@ -230,9 +257,14 @@ void SegmentedControl::setSelected (int index, juce::NotificationType notificati
 void SegmentedControl::resized()
 {
     auto area = getLocalBounds().reduced (3);
-    const int w = area.getWidth() / juce::jmax (1, buttons.size());
-    for (auto* b : buttons)
-        b->setBounds (area.removeFromLeft (w).reduced (1, 0));
+    const int columns = numColumns > 0 ? numColumns : buttons.size();
+    const int rows = getNumRows();
+    const int w = area.getWidth() / juce::jmax (1, columns);
+    const int h = area.getHeight() / juce::jmax (1, rows);
+    for (int i = 0; i < buttons.size(); ++i)
+        buttons[i]->setBounds (juce::Rectangle<int> (area.getX() + (i % juce::jmax (1, columns)) * w,
+                                                     area.getY() + (i / juce::jmax (1, columns)) * h, w, h)
+                                   .reduced (1, 1));
 }
 
 void SegmentedControl::paint (juce::Graphics& g)
@@ -311,6 +343,7 @@ juce::Path makeIcon (const juce::String& name)
         { "trash", "M4 7H20M10 11V17M14 11V17M6 7L7 20H17L18 7M9 7V4H15V7" },
         { "magnet", "M6 4V12A6 6 0 0 0 18 12V4M6 8H10M14 8H18" },
         { "plus", "M12 5V19M5 12H19" },
+        { "minus", "M5 12H19" },
         { "link", "M10 14A4 4 0 0 0 16 14L19 11A4 4 0 0 0 13 5L12 6M14 10A4 4 0 0 0 8 10L5 13A4 4 0 0 0 11 19L12 18" },
         { "refresh", "M20 11A8 8 0 1 0 17.7 16.7M20 4V11H13" },
         { "headphones", "M4 15V12A8 8 0 0 1 20 12V15M3 14H8V21H3ZM16 14H21V21H16Z" },
@@ -324,9 +357,30 @@ juce::Path makeIcon (const juce::String& name)
         { "folder", "M3 6Q3 5 4 5H9L11 7H20Q21 7 21 8V18Q21 19 20 19H4Q3 19 3 18Z" },
         { "drag", "M12 3V15M7 10L12 15L17 10M5 19H19" },
         { "record", "M18 12A6 6 0 1 1 6 12A6 6 0 1 1 18 12" },
-        { "gear", "M15 12A3 3 0 1 1 9 12A3 3 0 1 1 15 12M12 2V5M12 19V22M2 12H5M19 12H22M4.9 4.9L7 7M17 17L19.1 19.1M4.9 19.1L7 17M17 7L19.1 4.9" },
+
         { "file", "M6 3H14L19 8V21H6ZM14 3V8H19" },
     };
+
+    if (name == "gear")
+    {
+        // A cog: 8 teeth around a ring with a hole, as a single outline.
+        juce::Path cog;
+        constexpr int teeth = 8;
+        const float outer = 10.5f, inner = 8.0f;
+        for (int i = 0; i < teeth * 4; ++i)
+        {
+            const float angle = juce::MathConstants<float>::twoPi * (float) i / (float) (teeth * 4) - juce::MathConstants<float>::halfPi;
+            const float r = (i % 4 == 0 || i % 4 == 1) ? outer : inner;
+            const juce::Point<float> p (12.0f + r * std::cos (angle), 12.0f + r * std::sin (angle));
+            if (i == 0)
+                cog.startNewSubPath (p);
+            else
+                cog.lineTo (p);
+        }
+        cog.closeSubPath();
+        cog.addEllipse (8.5f, 8.5f, 7.0f, 7.0f);
+        return cog;
+    }
 
     auto it = paths.find (name);
     return it != paths.end() ? juce::Drawable::parseSVGPath (it->second) : juce::Path();

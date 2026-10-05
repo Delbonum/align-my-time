@@ -60,6 +60,14 @@ public:
     explicit SegmentedControl (juce::StringArray options);
 
     void setSelected (int index, juce::NotificationType notification = juce::dontSendNotification);
+
+    /** Lay the options out in rows of `columns` (default: one row). */
+    void setColumns (int columns) { numColumns = columns; resized(); }
+    int getNumRows() const
+    {
+        const int columns = numColumns > 0 ? numColumns : juce::jmax (1, buttons.size());
+        return (buttons.size() + columns - 1) / columns;
+    }
     int getSelected() const { return selected; }
     std::function<void (int)> onChange;
 
@@ -69,6 +77,7 @@ public:
 private:
     juce::OwnedArray<juce::TextButton> buttons;
     int selected = 0;
+    int numColumns = 0;
 };
 
 /** A large selectable card with radio dot, title and description. */

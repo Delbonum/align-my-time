@@ -84,7 +84,8 @@ TapKey getTapKey()
     int value = currentTapKey.load();
     if (value < 0)
     {
-        value = juce::jlimit (0, 3, appSettings().getIntValue ("tapKey", 0));
+        // "tapKeyChoice" replaces 1.1's "tapKey" so that everyone starts with the new default (Tab).
+        value = juce::jlimit (0, numTapKeyChoices - 1, appSettings().getIntValue ("tapKeyChoice", (int) TapKey::tab));
         currentTapKey.store (value);
     }
     return (TapKey) value;
@@ -93,7 +94,19 @@ TapKey getTapKey()
 void setTapKey (TapKey key)
 {
     currentTapKey.store ((int) key);
-    appSettings().setValue ("tapKey", (int) key);
+    appSettings().setValue ("tapKeyChoice", (int) key);
+    appSettings().saveIfNeeded();
+}
+
+juce::KeyPress getCustomTapKey()
+{
+    const auto stored = juce::KeyPress::createFromDescription (appSettings().getValue ("customTapKey", "F5"));
+    return stored.isValid() ? stored : juce::KeyPress (juce::KeyPress::F5Key);
+}
+
+void setCustomTapKey (const juce::KeyPress& key)
+{
+    appSettings().setValue ("customTapKey", key.getTextDescription());
     appSettings().saveIfNeeded();
 }
 
@@ -101,24 +114,54 @@ juce::KeyPress tapKeyPress (TapKey key)
 {
     switch (key)
     {
-        case TapKey::tab:       return juce::KeyPress (juce::KeyPress::tabKey);
+        case TapKey::space:     return juce::KeyPress (juce::KeyPress::spaceKey);
         case TapKey::t:         return juce::KeyPress ('t');
         case TapKey::returnKey: return juce::KeyPress (juce::KeyPress::returnKey);
-        case TapKey::space:
-        default:                return juce::KeyPress (juce::KeyPress::spaceKey);
+        case TapKey::ctrlSpace: return juce::KeyPress (juce::KeyPress::spaceKey, juce::ModifierKeys::ctrlModifier, 0);
+        case TapKey::custom:    return getCustomTapKey();
+        case TapKey::tab:
+        default:                return juce::KeyPress (juce::KeyPress::tabKey);
     }
+}
+
+juce::KeyPress currentTapKeyPress()
+{
+    return tapKeyPress (getTapKey());
 }
 
 juce::String describeTapKey (TapKey key)
 {
     switch (key)
     {
-        case TapKey::tab:       return "Tab";
+        case TapKey::space:     return tr ("Leertaste");
         case TapKey::t:         return "T";
         case TapKey::returnKey: return tr ("Eingabe");
-        case TapKey::space:
-        default:                return tr ("Leertaste");
+        case TapKey::ctrlSpace: return tr ("Strg+Leertaste");
+        case TapKey::custom:    return getCustomTapKey().getTextDescriptionWithIcons();
+        case TapKey::tab:
+        default:                return "Tab";
     }
+}
+
+bool matchesTapKey (const juce::KeyPress& key)
+{
+    const auto tapKey = currentTapKeyPress();
+    const auto normalise = [] (int code) { return code >= 'A' && code <= 'Z' ? code + ('a' - 'A') : code; };
+    const auto ctrl = [] (const juce::ModifierKeys& m) { return m.isCtrlDown() || m.isCommandDown(); };
+    return normalise (key.getKeyCode()) == normalise (tapKey.getKeyCode())
+           && ctrl (key.getModifiers()) == ctrl (tapKey.getModifiers())
+           && key.getModifiers().isAltDown() == tapKey.getModifiers().isAltDown();
+}
+
+bool markerDragNeedsCtrl()
+{
+    return appSettings().getBoolValue ("markerDragNeedsCtrl", true);
+}
+
+void setMarkerDragNeedsCtrl (bool needsCtrl)
+{
+    appSettings().setValue ("markerDragNeedsCtrl", needsCtrl);
+    appSettings().saveIfNeeded();
 }
 
 juce::String versionString()

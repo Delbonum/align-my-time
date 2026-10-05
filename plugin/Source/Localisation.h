@@ -26,20 +26,38 @@ inline juce::String utf8 (const char* text) { return juce::String::fromUTF8 (tex
 /** A number with the current language's decimal separator (120,00 / 120.00). */
 juce::String formatNumber (double value, int decimals);
 
-/** Which key taps (besides mouse and MIDI). Space collides with the host's transport in some
-    DAWs (Cubase), so it can be changed in the settings. */
+/** Which key taps (besides mouse and MIDI). Default is Tab: Space usually belongs to the host's
+    transport (Cubase). Ctrl+Space never taps unless it is chosen here. */
 enum class TapKey
 {
     space,
     tab,
     t,
-    returnKey
+    returnKey,
+    ctrlSpace,
+    custom
 };
+
+constexpr int numTapKeyChoices = 6;
 
 TapKey getTapKey();
 void setTapKey (TapKey key);
+
+/** The key used for TapKey::custom ("Eigene Taste"). */
+juce::KeyPress getCustomTapKey();
+void setCustomTapKey (const juce::KeyPress& key);
+
 juce::KeyPress tapKeyPress (TapKey key);
+juce::KeyPress currentTapKeyPress();
 juce::String describeTapKey (TapKey key);
+
+/** True if `key` is the current tap key (same key, same Ctrl/Alt state; Shift is ignored). */
+bool matchesTapKey (const juce::KeyPress& key);
+
+/** Review step: true = markers move only with Ctrl held, a plain click plays from there (default);
+    false = plain drag moves markers, Ctrl+click plays from there. */
+bool markerDragNeedsCtrl();
+void setMarkerDragNeedsCtrl (bool needsCtrl);
 
 /** Settings shared by all instances and the standalone app (language, tap key ...). */
 juce::PropertiesFile& appSettings();

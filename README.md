@@ -20,12 +20,14 @@ Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
 
 1. Die Events der Spur auswählen und dann **Audio › Erweiterungen › Align my Time** wählen (ARA). Alle Events der Spur landen im Plugin als *ein* großes Event.
 2. **Leertaste** startet die Wiedergabe im Plugin mit 2 s Vorlauf (oder du spielst in Cubase ab und tappst mit). Danach jede Eins (oder jede Zählzeit) mittippen. Verpasste Schläge und Doppel-Taps werden automatisch korrigiert. Jeder Marker rastet auf den nächsten Anschlag ein (±70 ms).
-3. **Prüfen:** Marker ziehen, mit ←/→ um 5 ms verschieben (mit Shift um 1 ms) oder per Doppelklick neu setzen. „Ab hier neu tappen“ wiederholt nur den Rest. Unter „1 Marker =“ stellst du um, wie weit zwei Taps auseinander liegen (z. B. ½ Takt, wenn du auf 1 und 3 getippt hast). Das Plugin schlägt das auch selbst vor. Unter „Erster Marker = Takt“ legst du fest, auf welchem Projekttakt der erste Marker landet.
+3. **Prüfen:** Klick in die Wellenform spielt ab dort. Marker mit **Strg+Ziehen** verschieben (umkehrbar unter Einstellungen › Bedienung), mit ←/→ um 5 ms verschieben (mit Shift um 1 ms) oder per Doppelklick neu setzen. „Ab hier neu tappen“ wiederholt nur den Rest. Unter „1 Marker =“ stellst du um, wie weit zwei Taps auseinander liegen (z. B. ½ Takt, wenn du auf 1 und 3 getippt hast). Das Plugin schlägt das auch selbst vor. Unter „Erster Marker = Takt“ legst du fest, auf welchem Projekttakt der erste Marker landet.
 4. **Rendern:**
    - *Als neue Spur*: Das Plugin schreibt eine WAV-Datei nach `Musik/Align my Time/`. Zieh die Kachel auf eine neue Spur. Mit „ab Projektanfang“ gehört die Datei an Takt 1.
    - *In dieser Spur ersetzen*: Die Spur spielt die angepasste Version. Das lässt sich jederzeit zurückschalten. Zum Festschreiben nutzt du Cubases „Render in Place“.
 
-**Leertaste in Cubase:** Cubase startet und stoppt mit der Leertaste auch die Wiedergabe. Damit sie im Plugin nur tappt, legst du in Cubase unter *Studio › Tastaturbefehle › Transport* bei „Start/Stop“ statt der Leertaste **Strg+Leertaste** fest. Strg+Leertaste tappt im Plugin nie. Alternativ wählst du unter ⚙ *Einstellungen* eine andere Tap-Taste (Tab, T oder Eingabe).
+**Tap-Taste:** Standard ist **Tab**, weil die Leertaste in Cubase den Transport steuert. Unter ⚙ *Einstellungen › Bedienung* wählst du Leertaste, Tab, T, Eingabe, Strg+Leertaste oder eine beliebige eigene Taste. Willst du in Cubase mit der Leertaste tappen, legst du dort unter *Studio › Tastaturbefehle › Transport* bei „Start/Stop“ statt der Leertaste Strg+Leertaste fest.
+
+**Zoom in „Prüfen“:** Mausrad (oder Pinch) zoomt, Shift+Mausrad scrollt, „Alles“ zeigt wieder die ganze Aufnahme.
 
 **Ziel-Tempo:** Ein Klick auf die Tempo-Anzeige oben rechts öffnet die Einstellung. Dort übernimmst du das Projekttempo oder gibst Tempo und Taktart von Hand ein.
 

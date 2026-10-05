@@ -34,7 +34,7 @@ private:
     WaveformView wave;
     juce::TextButton rewind, playStop, undo, clearAll, next;
     ToggleRow leadIn { tr ("Vorlauf (2 s)") };
-    SegmentedControl mode { { tr ("Jede Eins"), tr ("Jede Zählzeit") } };
+    SegmentedControl mode { { tr ("Jede Eins"), tr ("1 und 3"), tr ("Jede Zählzeit") } };
     std::unique_ptr<TapPad> pad;
 
     juce::Rectangle<int> leftColumn, rightColumn, footer, statsBox, hintBox;

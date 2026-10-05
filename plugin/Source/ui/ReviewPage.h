@@ -7,7 +7,7 @@ namespace amt::plugin::ui
 {
 
 /** Step 2: check the markers, choose how to align, listen before rendering. */
-class ReviewPage : public Page
+class ReviewPage : public Page, private juce::ScrollBar::Listener
 {
 public:
     explicit ReviewPage (AlignMyTimeProcessor& p);
@@ -24,10 +24,16 @@ public:
 private:
     void togglePreview();
     void startPreviewNow();
+    /** Plays original (A) or aligned (B) from a position in the recording (source time). */
+    void startPreviewAt (double sourceSeconds);
+    void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
+    void viewChanged();
     juce::String selectedInfo() const;
 
     WaveformView wave;
     TempoLane tempoLane;
+    juce::ScrollBar scrollbar { false };
+    juce::TextButton zoomOut, zoomIn, zoomFit;
 
     void stepUnit (int direction);
 
@@ -49,6 +55,7 @@ private:
 
     juce::Rectangle<int> leftColumn, middleColumn, rightColumn, footer, offsetBox, barRow, unitRow, mixRow, bannerRow;
     bool playWhenRendered = false;
+    std::optional<double> playFromAfterRender;
 };
 
 } // namespace amt::plugin::ui

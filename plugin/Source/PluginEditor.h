@@ -21,7 +21,8 @@ public:
 
     /** Set from the message thread: only poll while tapping makes sense. */
     std::atomic<bool> enabled { false };
-    std::atomic<int> keyCode { juce::KeyPress::spaceKey };
+    std::atomic<int> keyCode { juce::KeyPress::tabKey };
+    std::atomic<bool> needsCtrl { false }, needsAlt { false };
 
     static bool isSupported();
 
@@ -56,6 +57,7 @@ public:
 
     /** For tests: open the settings overlay. */
     void showSettings();
+    ui::SettingsPanel* getSettingsPanel() { return settings.get(); }
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;

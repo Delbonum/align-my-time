@@ -5,6 +5,7 @@
 // Usage: AlignMyTimeSmokeTest [screenshot-folder]
 
 #include "PluginEditor.h"
+#include "ui/WaveformView.h"
 #include "PluginProcessor.h"
 
 #include <amt/OnsetDetector.h>
@@ -305,6 +306,20 @@ int main (int argc, char** argv)
         check (ed->keyPressed (juce::KeyPress (juce::KeyPress::tabKey)), "configured tap key (Tab) is used");
         check (s.getNumTapsThisPass() == before + 1, "Tab tapped a marker");
         check (! ed->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)), "space stays with the host when it is not the tap key");
+
+        setTapKey (TapKey::ctrlSpace);
+        const auto beforeCtrl = s.getNumTapsThisPass();
+        check (! ed->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)), "plain space is not a tap when Ctrl+Space is chosen");
+        check (ed->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey, juce::ModifierKeys::ctrlModifier, 0))
+                   && s.getNumTapsThisPass() == beforeCtrl + 1,
+               "Ctrl+Space taps when chosen as tap key");
+
+        setTapKey (TapKey::custom);
+        setCustomTapKey (juce::KeyPress (juce::KeyPress::F7Key));
+        const auto beforeCustom = s.getNumTapsThisPass();
+        check (ed->keyPressed (juce::KeyPress (juce::KeyPress::F7Key)) && s.getNumTapsThisPass() == beforeCustom + 1,
+               "custom tap key (F7) taps");
+
         restored->stopPreview();
         setTapKey (TapKey::space);
     }
@@ -363,7 +378,9 @@ int main (int argc, char** argv)
 
             std::unique_ptr<juce::AudioProcessorEditor> de (standalone->createEditor());
             de->setVisible (true);
-            dynamic_cast<AlignMyTimeEditor*> (de.get())->showSettings();
+            auto* deEditor = dynamic_cast<AlignMyTimeEditor*> (de.get());
+            deEditor->showSettings();
+            deEditor->getSettingsPanel()->showSection (1);
             pumpMessages (100);
             saveSnapshot (*de, screenshots.getChildFile ("5-einstellungen.png"));
         }
@@ -375,7 +392,64 @@ int main (int argc, char** argv)
     {
         const auto icon = juce::ImageCache::getFromMemory (AlignMyTimeAssets::icon256_png, AlignMyTimeAssets::icon256_pngSize);
         check (icon.isValid() && icon.getWidth() == 256 && icon.hasAlphaChannel(), "app icon embedded (256 px, transparent corners)");
-        check (versionString() == "1.1.1", "version shown in the credits is the project version");
+        check (versionString() == AMT_EXPECTED_VERSION, "version shown in the credits is the project version");
+    }
+
+    std::printf ("10. Review waveform: zoom, scroll, click to play, Ctrl+drag moves markers\n");
+    {
+        ui::WaveformView view;
+        view.setBounds (0, 0, 1000, 150);
+        view.setInteractive (true);
+        view.setZoomable (true);
+        view.setTimeRange (0.0, 20.0);
+        std::vector<Marker> markers { { 5.0, 5.0, MarkerOrigin::tapped, true }, { 10.0, 10.0, MarkerOrigin::tapped, true } };
+        view.setMarkers (markers);
+
+        view.zoomBy (4.0, 5.0);
+        check (view.isZoomed() && std::abs ((view.getEndSeconds() - view.getStartSeconds()) - 5.0) < 1.0e-6
+                   && view.getStartSeconds() <= 5.0 && view.getEndSeconds() >= 5.0,
+               "zoom by 4 around 5 s shows 5 s of audio including 5 s");
+        view.setFullRange (0.0, 20.0);
+        check (view.isZoomed(), "updating the session keeps the zoom");
+        view.keepVisible (15.0);
+        check (view.getStartSeconds() <= 15.0 && view.getEndSeconds() >= 15.0, "view follows the playhead");
+        view.setView (-10.0, -5.0);
+        check (view.getStartSeconds() >= 0.0, "scrolling stops at the start");
+        view.zoomToFit();
+        check (! view.isZoomed(), "'Alles' shows everything again");
+
+        std::optional<double> clicked;
+        int moved = -1;
+        view.onClickTime = [&] (double t) { clicked = t; };
+        view.onMoveMarker = [&] (int i, double) { moved = i; };
+
+        auto mouse = [&] (float x, juce::ModifierKeys mods, bool drag) {
+            auto source = juce::Desktop::getInstance().getMainMouseSource();
+            const juce::Point<float> pos (x, 80.0f);
+            const juce::MouseEvent e (source, pos, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &view, &view, juce::Time::getCurrentTime(),
+                                      pos, juce::Time::getCurrentTime(), 1, drag);
+            view.mouseDown (e);
+            if (drag)
+                view.mouseDrag (e.withNewPosition (pos.translated (20.0f, 0.0f)));
+            view.mouseUp (e);
+        };
+        const float markerX = view.timeToX (5.0);
+        const juce::ModifierKeys ctrl (juce::ModifierKeys::ctrlModifier | juce::ModifierKeys::leftButtonModifier);
+        const juce::ModifierKeys plain (juce::ModifierKeys::leftButtonModifier);
+
+        view.setDragNeedsCtrl (true);
+        mouse (markerX, plain, true);
+        check (clicked.has_value() && std::abs (*clicked - 5.0) < 0.05 && moved < 0, "default: plain click on a marker plays from there, no move");
+        clicked.reset();
+        mouse (markerX, ctrl, true);
+        check (moved == 0 && ! clicked.has_value(), "default: Ctrl+drag moves the marker");
+
+        view.setDragNeedsCtrl (false);
+        moved = -1;
+        mouse (markerX, plain, true);
+        check (moved == 0 && ! clicked.has_value(), "swapped: plain drag moves the marker");
+        mouse (view.timeToX (12.0), ctrl, false);
+        check (clicked.has_value() && std::abs (*clicked - 12.0) < 0.05, "swapped: Ctrl+click plays from there");
     }
 
     std::printf ("\n%s\n", failures == 0 ? "ALL OK" : "FAILURES");

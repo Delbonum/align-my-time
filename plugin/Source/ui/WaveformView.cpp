@@ -23,12 +23,56 @@ void WaveformView::setTimeRange (double startSeconds, double endSeconds)
 {
     if (endSeconds <= startSeconds)
         endSeconds = startSeconds + 1.0;
-    if (juce::approximatelyEqual (startSeconds, viewStart) && juce::approximatelyEqual (endSeconds, viewEnd))
+    fullStart = startSeconds;
+    fullEnd = endSeconds;
+    setView (startSeconds, endSeconds);
+}
+
+void WaveformView::setFullRange (double startSeconds, double endSeconds)
+{
+    if (endSeconds <= startSeconds)
+        endSeconds = startSeconds + 1.0;
+    const bool wasZoomed = isZoomed();
+    fullStart = startSeconds;
+    fullEnd = endSeconds;
+    if (wasZoomed)
+        setView (viewStart, viewEnd);
+    else
+        setView (fullStart, fullEnd);
+}
+
+void WaveformView::setView (double startSeconds, double endSeconds)
+{
+    // At least 50 ms visible, never more than the whole range, never outside it.
+    const double fullLength = fullEnd - fullStart;
+    double length = juce::jlimit (juce::jmin (0.05, fullLength), fullLength, endSeconds - startSeconds);
+    double start = juce::jlimit (fullStart, fullEnd - length, startSeconds);
+
+    if (juce::approximatelyEqual (start, viewStart) && juce::approximatelyEqual (start + length, viewEnd))
         return;
-    viewStart = startSeconds;
-    viewEnd = endSeconds;
+    viewStart = start;
+    viewEnd = start + length;
     peaksDirty = true;
     repaint();
+    if (onViewChanged)
+        onViewChanged();
+}
+
+void WaveformView::zoomBy (double factor, double anchorSeconds)
+{
+    const double newLength = (viewEnd - viewStart) / factor;
+    const double anchorRatio = (anchorSeconds - viewStart) / (viewEnd - viewStart);
+    const double start = anchorSeconds - anchorRatio * newLength;
+    setView (start, start + newLength);
+}
+
+void WaveformView::keepVisible (double seconds)
+{
+    if (! isZoomed() || (seconds >= viewStart && seconds <= viewEnd))
+        return;
+    const double length = viewEnd - viewStart;
+    const double start = seconds - 0.1 * length;
+    setView (start, start + length);
 }
 
 void WaveformView::setMarkers (const std::vector<Marker>& m, int sel)
@@ -246,29 +290,83 @@ int WaveformView::markerAt (float x) const
     return best;
 }
 
+bool WaveformView::wantsMarkerMove (const juce::ModifierKeys& mods) const
+{
+    const bool ctrl = mods.isCtrlDown() || mods.isCommandDown();
+    return dragNeedsCtrl ? ctrl : ! ctrl;
+}
+
+void WaveformView::updateCursor (juce::Point<float> position, const juce::ModifierKeys& mods)
+{
+    if (! interactive)
+        return;
+    const bool overMarker = markerAt (position.x) >= 0;
+    setMouseCursor (overMarker && wantsMarkerMove (mods) ? juce::MouseCursor::LeftRightResizeCursor
+                    : onClickTime != nullptr          ? juce::MouseCursor::PointingHandCursor
+                                                      : juce::MouseCursor::NormalCursor);
+}
+
 void WaveformView::mouseMove (const juce::MouseEvent& e)
 {
-    if (interactive)
-        setMouseCursor (markerAt (e.position.x) >= 0 ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
+    lastMouse = e.position;
+    updateCursor (e.position, e.mods);
+}
+
+void WaveformView::modifierKeysChanged (const juce::ModifierKeys& mods)
+{
+    if (isMouseOver())
+        updateCursor (lastMouse, mods);
 }
 
 void WaveformView::mouseDown (const juce::MouseEvent& e)
 {
     dragging = -1;
-    if (interactive)
+    const int hit = interactive ? markerAt (e.position.x) : -1;
+
+    if (hit >= 0 && wantsMarkerMove (e.mods))
     {
-        const int hit = markerAt (e.position.x);
-        if (hit >= 0)
-        {
-            dragging = hit;
-            if (onSelectMarker)
-                onSelectMarker (hit);
-            return;
-        }
+        dragging = hit;
+        if (onSelectMarker)
+            onSelectMarker (hit);
+        return;
     }
 
+    // Plain click (or Ctrl+click, depending on the setting): select the marker under the mouse
+    // and play from here.
+    if (wantsMarkerMove (e.mods) && interactive)
+        return; // e.g. Ctrl+click on empty space while Ctrl is the "move" modifier
+    if (hit >= 0 && onSelectMarker)
+        onSelectMarker (hit);
     if (onClickTime)
         onClickTime (xToTime (e.position.x));
+}
+
+void WaveformView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    if (! zoomable)
+    {
+        juce::Component::mouseWheelMove (e, wheel);
+        return;
+    }
+
+    const double length = viewEnd - viewStart;
+    const bool horizontal = std::abs (wheel.deltaX) > std::abs (wheel.deltaY) || e.mods.isShiftDown();
+    if (horizontal)
+    {
+        // Shift+wheel or a sideways swipe scrolls.
+        const float delta = std::abs (wheel.deltaX) > 0.0f ? wheel.deltaX : wheel.deltaY;
+        setView (viewStart - delta * length * 0.5, viewEnd - delta * length * 0.5);
+        return;
+    }
+
+    // The wheel zooms around the mouse position.
+    zoomBy (std::pow (2.0, (double) wheel.deltaY * 2.0), xToTime (e.position.x));
+}
+
+void WaveformView::mouseMagnify (const juce::MouseEvent& e, float scaleFactor)
+{
+    if (zoomable)
+        zoomBy (scaleFactor, xToTime (e.position.x));
 }
 
 void WaveformView::mouseDrag (const juce::MouseEvent& e)

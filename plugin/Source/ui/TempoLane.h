@@ -15,6 +15,12 @@ class TempoLane : public juce::Component
 public:
     void setData (const AlignmentPlan& plan, const std::vector<double>& markerSeconds, const TempoMap& project,
                   double viewStart, double viewEnd);
+    void setViewRange (double start, double end)
+    {
+        viewStart = start;
+        viewEnd = end;
+        repaint();
+    }
     void paint (juce::Graphics&) override;
 
 private:

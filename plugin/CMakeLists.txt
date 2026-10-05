@@ -103,7 +103,8 @@ if(AMT_BUILD_TESTS)
     add_executable(AlignMyTimeSmokeTest tests/PluginSmokeTest.cpp
         ${juce_SOURCE_DIR}/modules/juce_audio_plugin_client/juce_audio_plugin_client_ARA.cpp)
     target_include_directories(AlignMyTimeSmokeTest PRIVATE Source $<TARGET_PROPERTY:AlignMyTime,INCLUDE_DIRECTORIES>)
-    target_compile_definitions(AlignMyTimeSmokeTest PRIVATE $<TARGET_PROPERTY:AlignMyTime,COMPILE_DEFINITIONS>)
+    target_compile_definitions(AlignMyTimeSmokeTest PRIVATE $<TARGET_PROPERTY:AlignMyTime,COMPILE_DEFINITIONS>
+        AMT_EXPECTED_VERSION="${PROJECT_VERSION}")
     target_link_libraries(AlignMyTimeSmokeTest PRIVATE AlignMyTime amt_core AlignMyTimeAssets)
     add_test(NAME plugin_smoke_test COMMAND AlignMyTimeSmokeTest)
 endif()
