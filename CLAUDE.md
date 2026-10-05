@@ -1,4 +1,4 @@
-# Align my Time
+# Align My Time
 
 DAW plug-in and standalone app (VST3/AU, ARA 2, JUCE 8): tap along to a track, then time-stretch or cut it onto the project tempo. UI and docs are German.
 

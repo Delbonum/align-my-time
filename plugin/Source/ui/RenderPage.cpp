@@ -60,7 +60,7 @@ RenderPage::RenderPage (AlignMyTimeProcessor& p) : Page (p), dragTile (std::make
     // Standalone: there is no track to replace or drag into; the result is simply a file.
     if (processor.isStandalone())
     {
-        newTrackCard.setText (tr ("Als Datei speichern"), tr ("Schreibt eine WAV-Datei (24 bit) in den Ordner „Musik/Align my Time“."));
+        newTrackCard.setText (tr ("Als Datei speichern"), tr ("Schreibt eine WAV-Datei (24 bit) in den Ordner „Musik/Align My Time“."));
         replaceCard.setVisible (false);
         dragTile->savedOnly = true;
         session.updateSettings ([] (SessionSettings& s) { s.destination = Destination::newTrack; s.exportFromProjectStart = false; });
@@ -259,7 +259,7 @@ void RenderPage::sessionChanged()
     {
         auto name = settings.trackName;
         if (name.isEmpty())
-            name = "Align my Time " + formatBpm (session.getProjectTempo().bpmAt (plan.targetSeconds.empty() ? 0.0 : plan.targetSeconds.front())) + " BPM";
+            name = "Align My Time " + formatBpm (session.getProjectTempo().bpmAt (plan.targetSeconds.empty() ? 0.0 : plan.targetSeconds.front())) + " BPM";
         trackName.setText (name, false);
     }
 

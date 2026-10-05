@@ -13,7 +13,7 @@ namespace amt::plugin
 /** One background thread shared by all instances for reading ARA audio ahead of playback. */
 struct SharedReadThread : juce::TimeSliceThread
 {
-    SharedReadThread() : juce::TimeSliceThread ("Align my Time ARA reader") { startThread (juce::Thread::Priority::high); }
+    SharedReadThread() : juce::TimeSliceThread ("Align My Time ARA reader") { startThread (juce::Thread::Priority::high); }
     ~SharedReadThread() override { stopThread (2000); }
 };
 

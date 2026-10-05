@@ -19,7 +19,7 @@ public:
     };
 
     RenderJob (Input in, std::atomic<double>& progressOut, std::function<void (std::shared_ptr<const AudioClip>)> done)
-        : juce::Thread ("Align my Time render"), input (std::move (in)), progress (progressOut), onDone (std::move (done))
+        : juce::Thread ("Align My Time render"), input (std::move (in)), progress (progressOut), onDone (std::move (done))
     {
     }
 

@@ -13,7 +13,7 @@ Alles, was du brauchst, liegt im Repository. Abhängigkeiten (JUCE 8, ARA SDK, S
    cmake -S . -B build
    cmake --build build --config Release --target AlignMyTime_VST3
    ```
-3. Das Plugin liegt dann unter `build\plugin\AlignMyTime_artefacts\Release\VST3\Align my Time.vst3`. Kopiere es nach `C:\Program Files\Common Files\VST3` (oder setze in `plugin/CMakeLists.txt` `COPY_PLUGIN_AFTER_BUILD TRUE`, dann kopiert der Build selbst; dafür braucht Visual Studio Administratorrechte).
+3. Das Plugin liegt dann unter `build\plugin\AlignMyTime_artefacts\Release\VST3\Align My Time.vst3`. Kopiere es nach `C:\Program Files\Common Files\VST3` (oder setze in `plugin/CMakeLists.txt` `COPY_PLUGIN_AFTER_BUILD TRUE`, dann kopiert der Build selbst; dafür braucht Visual Studio Administratorrechte).
 
 Alternativ öffnest du den Ordner direkt in Visual Studio („Ordner öffnen“). VS erkennt das CMake-Projekt automatisch.
 
@@ -30,8 +30,8 @@ Der erste Build dauert einige Minuten (JUCE). Danach geht es inkrementell schnel
 |---|---|---|
 | Build-Ordner | `build*/` | Wird jederzeit neu erzeugt (in `.gitignore`) |
 | Heruntergeladene Abhängigkeiten | `build/_deps/` | Lädt CMake neu; offline? Siehe unten |
-| Exportierte WAVs des Plugins | `Musik/Align my Time/` | Nutzerdaten, nicht Teil des Projekts |
-| Aufnahmen im Insert-Modus | `%APPDATA%\Align my Time\Captures` bzw. `~/Library/Application Support/Align my Time/Captures` | Gehören zu Cubase-Projekten, können gelöscht werden, wenn das Projekt weg ist |
+| Exportierte WAVs des Plugins | `Musik/Align My Time/` | Nutzerdaten, nicht Teil des Projekts |
+| Aufnahmen im Insert-Modus | `%APPDATA%\Align My Time\Captures` bzw. `~/Library/Application Support/Align My Time/Captures` | Gehören zu Cubase-Projekten, können gelöscht werden, wenn das Projekt weg ist |
 
 Offline bauen: Abhängigkeiten einmal klonen und CMake per `-DFETCHCONTENT_SOURCE_DIR_JUCE=…`, `-DFETCHCONTENT_SOURCE_DIR_ARA_SDK=…`, `-DFETCHCONTENT_SOURCE_DIR_SIGNALSMITH-STRETCH=…` und `-DFETCHCONTENT_SOURCE_DIR_SIGNALSMITH-LINEAR=…` darauf zeigen lassen.
 

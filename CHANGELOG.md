@@ -1,7 +1,12 @@
-# Changelog
+# Changelog – Align My Time
 
 Versionen nach [Semantic Versioning](https://semver.org/lang/de/): **MAJOR.MINOR.PATCH**.
 PATCH = Fehlerbehebungen, MINOR = neue Funktionen, MAJOR = inkompatible Änderungen (z. B. gespeicherte Projekte).
+
+## 1.2.1 – 2026-10-05
+
+### Geändert
+- Schreibweise des Namens überall: **Align My Time** (Plugin-, App- und Ordnernamen, Oberfläche, Doku).
 
 ## 1.2.0 – 2026-10-05
 

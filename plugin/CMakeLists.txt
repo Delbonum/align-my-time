@@ -23,8 +23,8 @@ if(APPLE)
 endif()
 
 juce_add_plugin(AlignMyTime
-    PRODUCT_NAME "Align my Time"
-    COMPANY_NAME "Align my Time"
+    PRODUCT_NAME "Align My Time"
+    COMPANY_NAME "Align My Time"
     BUNDLE_ID "com.alignmytime.plugin"
     PLUGIN_MANUFACTURER_CODE Amyt
     PLUGIN_CODE Amt1

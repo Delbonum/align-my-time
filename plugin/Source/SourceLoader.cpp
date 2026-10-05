@@ -59,7 +59,7 @@ std::optional<TempoMap> tempoFromPlayHead (const juce::AudioPlayHead::PositionIn
 //==============================================================================
 TrackLoader::TrackLoader (const std::vector<juce::ARAPlaybackRegion*>& playbackRegions, double targetSampleRate, int numChannels,
                           std::function<void (Result)> done)
-    : juce::Thread ("Align my Time track loader"), sampleRate (targetSampleRate), channels (juce::jmax (1, numChannels)), onDone (std::move (done))
+    : juce::Thread ("Align My Time track loader"), sampleRate (targetSampleRate), channels (juce::jmax (1, numChannels)), onDone (std::move (done))
 {
     juce::String trackName;
     juce::ARAMusicalContext* musicalContext = nullptr;

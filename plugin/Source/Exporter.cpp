@@ -6,7 +6,7 @@ namespace amt::plugin
 
 juce::File Exporter::defaultFolder()
 {
-    return juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Align my Time");
+    return juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Align My Time");
 }
 
 juce::File Exporter::writeWav (const AudioClip& clip, const juce::String& name, bool fromProjectStart, juce::String& errorMessage)
@@ -18,7 +18,7 @@ juce::File Exporter::writeWav (const AudioClip& clip, const juce::String& name, 
         return {};
     }
 
-    const auto safeName = juce::File::createLegalFileName (name.isNotEmpty() ? name : juce::String ("Align my Time"));
+    const auto safeName = juce::File::createLegalFileName (name.isNotEmpty() ? name : juce::String ("Align My Time"));
     auto file = folder.getNonexistentChildFile (safeName, ".wav", false);
 
     std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());

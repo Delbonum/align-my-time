@@ -169,7 +169,7 @@ void Header::paint (juce::Graphics& g)
 
     g.setColour (colours::text);
     g.setFont (uiFont (16.0f, true));
-    g.drawText ("Align my Time", juce::Rectangle<int> (58, 0, 200, getHeight()), juce::Justification::centredLeft);
+    g.drawText ("Align My Time", juce::Rectangle<int> (58, 0, 200, getHeight()), juce::Justification::centredLeft);
 
     // Connectors between steps
     g.setColour (colours::border);

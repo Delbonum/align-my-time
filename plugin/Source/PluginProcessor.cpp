@@ -10,7 +10,7 @@ namespace
     juce::File captureFolder()
     {
         return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-            .getChildFile ("Align my Time")
+            .getChildFile ("Align My Time")
             .getChildFile ("Captures");
     }
 
@@ -383,7 +383,7 @@ void AlignMyTimeProcessor::loadAudioFile (const juce::File& file)
     struct Loader : juce::Thread
     {
         Loader (juce::File f, double r, int c, std::function<void (std::shared_ptr<AudioClip>, juce::String)> done)
-            : juce::Thread ("Align my Time file loader"), file (std::move (f)), rate (r), channels (c), onDone (std::move (done)) {}
+            : juce::Thread ("Align My Time file loader"), file (std::move (f)), rate (r), channels (c), onDone (std::move (done)) {}
 
         void run() override
         {

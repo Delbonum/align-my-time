@@ -22,9 +22,9 @@ namespace
         SettingsHolder()
         {
             juce::PropertiesFile::Options options;
-            options.applicationName = "Align my Time";
+            options.applicationName = "Align My Time";
             options.filenameSuffix = "settings";
-            options.folderName = "Align my Time";
+            options.folderName = "Align My Time";
             options.osxLibrarySubFolder = "Application Support";
             options.storageFormat = juce::PropertiesFile::storeAsXML;
             file = std::make_unique<juce::PropertiesFile> (options);

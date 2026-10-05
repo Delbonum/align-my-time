@@ -194,7 +194,7 @@ void SettingsPanel::paint (juce::Graphics& g)
 
     g.setColour (colours::accent);
     g.setFont (uiFont (18.0f, true));
-    g.drawText ("Align my Time", credits.removeFromTop (28), juce::Justification::centredLeft);
+    g.drawText ("Align My Time", credits.removeFromTop (28), juce::Justification::centredLeft);
     credits.removeFromTop (6);
 
     const auto format = processor.isStandalone() ? tr ("Standalone-App")

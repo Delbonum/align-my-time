@@ -69,7 +69,7 @@ const std::unordered_map<std::string, const char*>& englishTranslations()
         { "In die DAW ziehen: ", "Drag into your DAW: " },
         { "Noch nicht berechnet – „Rendern“ erzeugt die angepasste Version.", "Not rendered yet – “Render” creates the aligned version." },
         { "Als Datei speichern", "Save as file" },
-        { "Schreibt eine WAV-Datei (24 bit) in den Ordner „Musik/Align my Time“.", "Writes a WAV file (24 bit) to the folder “Music/Align my Time”." },
+        { "Schreibt eine WAV-Datei (24 bit) in den Ordner „Musik/Align My Time“.", "Writes a WAV file (24 bit) to the folder “Music/Align My Time”." },
         { "Spurname", "Track name" },
         { "Im Ordner zeigen", "Show in folder" },
         { "Zurück", "Back" },
