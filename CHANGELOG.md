@@ -3,6 +3,26 @@
 Versionen nach [Semantic Versioning](https://semver.org/lang/de/): **MAJOR.MINOR.PATCH**.
 PATCH = Fehlerbehebungen, MINOR = neue Funktionen, MAJOR = inkompatible Änderungen (z. B. gespeicherte Projekte).
 
+## 1.4.0 – 2026-10-07
+
+### Neu
+- **Standalone-App mit Menüleiste:** Datei | Bearbeiten | Ansicht | Hilfe, mit Tastenkürzeln (`Strg+N`, `Strg+O`, `Strg+S`, `Strg+E` …). Die englische Leiste „Audio input is muted …“ und der Button „Options“ sind weg.
+- **Projekte (`.amtp`)** in der Standalone-App: neu, öffnen, speichern, speichern unter, zuletzt geöffnet. Ein Projekt verweist auf die Audiodateien (absolut und relativ zum Projekt, ein Projektordner lässt sich also verschieben) und enthält Marker, Raster, Ziel-Tempo und alle Einstellungen. Ungespeicherte Änderungen zeigt ein `*` im Fenstertitel; vor „Neu“, „Öffnen“ und „Beenden“ fragt die App nach. Format: `docs/PROJEKTFORMAT.md`.
+- **Audio & MIDI** als eigener Bereich in den Einstellungen (Standalone), auf Deutsch. Es gibt nur noch ein Einstellungen-Fenster. Direkt erreichbar über **Bearbeiten › Audio- und MIDI-Einstellungen …**
+- **Handbuch** in der App: **Hilfe › Handbuch**, `F1` oder das **?** oben rechts (auch im Plugin), auf Deutsch und Englisch. **Hilfe › Tastenkürzel** springt zur Übersicht, **Hilfe › Credits** öffnet die Einstellungen bei den Credits. Als Datei: `docs/HANDBUCH.md` bzw. `docs/MANUAL.md`.
+- **Rückgängig / Wiederherstellen** (`Strg+Z`, `Strg+Y` bzw. `Strg+Shift+Z`) für Marker, Raster, ersten Takt, Begradigen, Einrasten, Verfahren und Ziel-Tempo. Ein ganzer Tap-Durchgang und ein ganzes Ziehen sind je ein Schritt.
+- Standalone: **Ergebnis exportieren** fragt mit einem normalen Speichern-Dialog nach dem Ort.
+- Standalone: Das Fenster ist größenveränderbar (der Inhalt skaliert mit) und startet auf kleinen Bildschirmen passend verkleinert.
+
+### Behoben
+- `Shift+←`/`Shift+→` in „Prüfen“ verschiebt den Marker jetzt wirklich um 1 ms (bisher passierte gar nichts).
+- „Marker bearbeiten“ und „Stopp“ erschienen in der englischen Oberfläche auf Deutsch.
+- Dialoge von JUCE (z. B. „OK“/„Cancel“) erscheinen in der eingestellten Sprache.
+
+### Intern
+- Doppelten Resampling-Code zusammengelegt, ungenutzte Funktionen und die nie verwendete Einstellung `muteOriginal` entfernt, `tools/__pycache__` aus Git entfernt.
+- Der End-to-End-Test verändert die Einstellungen des Benutzers nicht mehr (eigene Einstellungsdatei) und deckt Rückgängig, Projektdateien, Menüleiste und Handbuch ab.
+
 ## 1.3.0 – 2026-10-06
 
 ### Neu

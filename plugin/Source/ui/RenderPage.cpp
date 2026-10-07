@@ -65,10 +65,9 @@ RenderPage::RenderPage (AlignMyTimeProcessor& p) : Page (p), dragTile (std::make
     // Standalone: there is no track to replace or drag into; the result is simply a file.
     if (processor.isStandalone())
     {
-        newTrackCard.setText (tr ("Als Datei speichern"), tr ("Schreibt eine WAV-Datei (24 bit) in den Ordner „Musik/Align My Time“."));
+        newTrackCard.setText (tr ("Als Datei speichern"), tr ("Schreibt eine WAV-Datei (24 bit). Wohin, fragt die App beim Exportieren."));
         replaceCard.setVisible (false);
         dragTile->savedOnly = true;
-        session.updateSettings ([] (SessionSettings& s) { s.destination = Destination::newTrack; s.exportFromProjectStart = false; });
     }
 
     trackName.setFont (uiFont (13.5f));
@@ -131,6 +130,11 @@ std::vector<double> RenderPage::projectBarLines (double start, double end) const
             lines.push_back (t);
     }
     return lines;
+}
+
+Destination RenderPage::destination() const
+{
+    return processor.isStandalone() ? Destination::newTrack : session.getSettings().destination;
 }
 
 void RenderPage::resized()
@@ -266,10 +270,10 @@ void RenderPage::sessionChanged()
     before.setMarkerLabels (firstLabel);
     after.setMarkerLabels (firstLabel);
 
-    newTrackCard.setToggleState (settings.destination == Destination::newTrack, juce::dontSendNotification);
-    replaceCard.setToggleState (settings.destination == Destination::replaceInTrack, juce::dontSendNotification);
+    newTrackCard.setToggleState (destination() == Destination::newTrack, juce::dontSendNotification);
+    replaceCard.setToggleState (destination() == Destination::replaceInTrack, juce::dontSendNotification);
     fromProjectStart.setToggleState (settings.exportFromProjectStart, juce::dontSendNotification);
-    fromProjectStart.setEnabled (settings.destination == Destination::newTrack);
+    fromProjectStart.setEnabled (destination() == Destination::newTrack);
 
     if (! trackName.hasKeyboardFocus (true))
     {
@@ -279,7 +283,7 @@ void RenderPage::sessionChanged()
         trackName.setText (name, false);
     }
 
-    const bool showFile = settings.destination == Destination::newTrack && ! exportedFiles.isEmpty()
+    const bool showFile = destination() == Destination::newTrack && ! exportedFiles.isEmpty()
                           && exportedFiles[0].existsAsFile() && session.isAlignedUpToDate();
     dragTile->files = exportedFiles;
 
@@ -291,7 +295,7 @@ void RenderPage::sessionChanged()
         for (const auto& t : session.getExtraTracks())
             (t.kind == ExtraTrack::Kind::hostTrack ? hostTracks : files).add (t.name);
 
-        if (settings.destination == Destination::newTrack)
+        if (destination() == Destination::newTrack)
             multitrackNote = tr ("Eine Datei pro Spur, alle gleich lang und ab derselben Position: zusammen auf neue Spuren ziehen.");
         else
         {
@@ -313,7 +317,6 @@ void RenderPage::sessionChanged()
 
 void RenderPage::refresh()
 {
-    const auto& settings = session.getSettings();
     juce::String text;
     juce::String icon = "check";
 
@@ -322,25 +325,33 @@ void RenderPage::refresh()
         text = tr ("Wird berechnet … ") + juce::String (juce::roundToInt (session.getRenderProgress() * 100.0)) + " %";
         icon = {};
     }
-    else if (settings.destination == Destination::replaceInTrack)
+    else if (destination() == Destination::replaceInTrack)
     {
         text = session.isReplaceActive() && session.isAlignedUpToDate() ? tr ("Original wiederherstellen") : tr ("In Spur ersetzen");
         icon = session.isReplaceActive() && session.isAlignedUpToDate() ? "undo" : "check";
     }
     else
     {
-        text = processor.isStandalone() ? tr ("Als Datei exportieren") : tr ("In neue Spur rendern");
+        text = processor.isStandalone() ? tr ("Als Datei exportieren …") : tr ("In neue Spur rendern");
     }
 
     configureButton (renderButton, text, icon, ButtonKind::primary);
     renderButton.setEnabled (session.canAlign());
     renderButton.setTooltip (processor.getBlockingReason (true));
     listen.setEnabled (session.getAligned() != nullptr);
-    configureButton (listen, processor.getPreview().isPlaying() ? juce::String ("Stopp") : tr ("Anhören"),
+    configureButton (listen, processor.getPreview().isPlaying() ? tr ("Stopp") : tr ("Anhören"),
                      processor.getPreview().isPlaying() ? "stop" : "headphones", ButtonKind::ghost);
 
     if (session.isRendering())
         repaint (footer);
+}
+
+void RenderPage::exportResult()
+{
+    if (session.isRendering())
+        pendingAction = true; // the running render ends in the export
+    else if (destination() == Destination::newTrack)
+        render();
 }
 
 void RenderPage::render()
@@ -354,7 +365,7 @@ void RenderPage::render()
         return;
     }
 
-    if (session.getSettings().destination == Destination::replaceInTrack && session.isReplaceActive() && session.isAlignedUpToDate())
+    if (destination() == Destination::replaceInTrack && session.isReplaceActive() && session.isAlignedUpToDate())
     {
         session.setReplaceActive (false);
         return;
@@ -374,32 +385,57 @@ void RenderPage::finishPendingAction()
     if (aligned == nullptr || ! session.isAlignedUpToDate())
         return;
 
-    const auto& settings = session.getSettings();
-    if (settings.destination == Destination::replaceInTrack)
+    if (destination() == Destination::replaceInTrack)
     {
         session.setReplaceActive (true);
         return;
     }
 
+    if (! processor.isStandalone())
+    {
+        exportTo (Exporter::newFileFor (trackName.getText()));
+        return;
+    }
+
+    // Standalone: a normal "save as" dialog, starting in Music/Align My Time.
+    Exporter::defaultFolder().createDirectory();
+    chooser = std::make_unique<juce::FileChooser> (tr ("Ergebnis als WAV-Datei speichern"), Exporter::newFileFor (trackName.getText()), "*.wav");
+    juce::Component::SafePointer<RenderPage> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe != nullptr && fc.getResult() != juce::File())
+                                  safe->exportTo (fc.getResult().withFileExtension (".wav"));
+                          });
+}
+
+void RenderPage::exportTo (const juce::File& firstFile)
+{
+    errorText.clear();
     exportedFiles.clear();
     const auto& tracks = session.getAlignedTracks();
+    const bool fromStart = session.getSettings().exportFromProjectStart && ! processor.isStandalone();
+
     if (tracks.size() <= 1)
     {
-        exportedFiles.add (Exporter::writeWav (*aligned, trackName.getText(), settings.exportFromProjectStart, errorText));
+        if (auto aligned = session.getAligned(); aligned != nullptr && Exporter::writeWav (*aligned, firstFile, fromStart, errorText))
+            exportedFiles.add (firstFile);
     }
     else
     {
         // One file per track, named after the track, all padded the same way.
+        const auto baseName = firstFile.getFileNameWithoutExtension();
         for (const auto& t : tracks)
         {
-            const auto name = trackName.getText() + utf8 (" – ") + (t.id.isEmpty() ? processor.getOwnTrackName() : t.name);
-            const auto file = Exporter::writeWav (*t.clip, name, settings.exportFromProjectStart, errorText);
-            if (file == juce::File())
+            const auto name = juce::File::createLegalFileName (baseName + utf8 (" – ") + (t.id.isEmpty() ? processor.getOwnTrackName() : t.name));
+            auto file = firstFile.getSiblingFile (name + ".wav");
+            if (! processor.isStandalone())
+                file = file.getNonexistentSibling (false);
+            if (! Exporter::writeWav (*t.clip, file, fromStart, errorText))
                 break;
             exportedFiles.add (file);
         }
     }
-    exportedFiles.removeAllInstancesOf (juce::File());
     sessionChanged();
 }
 

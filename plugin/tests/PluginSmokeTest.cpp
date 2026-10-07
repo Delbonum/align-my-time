@@ -5,8 +5,10 @@
 // Usage: AlignMyTimeSmokeTest [screenshot-folder]
 
 #include "PluginEditor.h"
-#include "ui/WaveformView.h"
 #include "PluginProcessor.h"
+#include "ProjectFile.h"
+#include "standalone/AppController.h"
+#include "ui/WaveformView.h"
 
 #include <amt/OnsetDetector.h>
 #include <AlignMyTimeAssets.h>
@@ -107,6 +109,11 @@ void saveSnapshot (juce::Component& c, const juce::File& file)
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+
+    // Never touch the user's own settings (language, tap key, last project ...).
+    const auto settingsFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("amt-smoke-settings.xml");
+    settingsFile.deleteFile();
+    useSettingsFile (settingsFile);
     setLanguage (Language::german);
     setTapKey (TapKey::space);
     const juce::File screenshots = argc > 1 ? juce::File (juce::String (argv[1])) : juce::File();
@@ -380,7 +387,7 @@ int main (int argc, char** argv)
             de->setVisible (true);
             auto* deEditor = dynamic_cast<AlignMyTimeEditor*> (de.get());
             deEditor->showSettings();
-            deEditor->getSettingsPanel()->showSection (1);
+            deEditor->getSettingsPanel()->showSection (ui::SettingsPanel::Section::controls);
             pumpMessages (100);
             saveSnapshot (*de, screenshots.getChildFile ("5-einstellungen.png"));
         }
@@ -593,6 +600,166 @@ int main (int argc, char** argv)
 
         kick.deleteFile();
         overheads.deleteFile();
+    }
+
+    std::printf ("13. Undo / redo\n");
+    {
+        auto& s = restored->getSession();
+        s.setStep (Step::tap);
+        s.setSnapToAttacks (false);
+        s.beginTapping (0.0);
+        for (auto d : take.downbeats)
+            s.addTap (d);
+        s.setStep (Step::review);
+        s.setStraighten (0.0);
+        const auto before = s.getMarkers();
+        s.selectMarker (3);
+        s.moveMarker (3, before[3].seconds + 0.05);
+        s.moveMarker (3, before[3].seconds + 0.06); // same drag: one step
+        s.removeSelected();
+        check (s.getMarkers().size() == before.size() - 1 && s.canUndo(), "marker moved and deleted");
+        s.undo();
+        check (s.getMarkers().size() == before.size() && std::abs (s.getMarkers()[3].seconds - before[3].seconds) > 0.03, "undo brings the deleted marker back");
+        s.undo();
+        check (std::abs (s.getMarkers()[3].seconds - before[3].seconds) < 1.0e-9, "one undo step for a whole drag");
+        s.redo();
+        check (std::abs (s.getMarkers()[3].seconds - before[3].seconds) > 0.03 && s.canRedo(), "redo repeats the move");
+        s.redo();
+
+        const auto unit = s.getSettings().tapUnit;
+        s.updateSettings ([] (SessionSettings& st) { st.tapUnit = TapUnit::beat; });
+        s.undo();
+        check (s.getSettings().tapUnit == unit, "undo restores the grid unit");
+
+        s.setStep (Step::tap);
+        const auto countBefore = s.getMarkers().size();
+        s.beginTapping (0.0);
+        for (int i = 0; i < 5; ++i)
+            s.addTap (1.0 + i * 2.0);
+        s.undo();
+        check (s.getMarkers().size() == countBefore, "a whole tapping pass is one undo step");
+
+        std::unique_ptr<juce::AudioProcessorEditor> ed (restored->createEditor());
+        s.setStep (Step::review);
+        s.selectMarker (2);
+        s.removeSelected();
+        check (ed->keyPressed (juce::KeyPress ('z', juce::ModifierKeys::ctrlModifier, 0)) && s.getMarkers().size() == countBefore,
+               "Ctrl+Z undoes in the editor");
+    }
+
+    std::printf ("14. Standalone: project file, menu bar, manual\n");
+    {
+        juce::AudioProcessor::setTypeOfNextNewPlugin (juce::AudioProcessor::wrapperType_Standalone);
+        auto app = std::make_unique<AlignMyTimeProcessor>();
+        juce::AudioProcessor::setTypeOfNextNewPlugin (juce::AudioProcessor::wrapperType_Undefined);
+        app->setRateAndBufferSizeDetails (rate, block);
+        app->prepareToPlay (rate, block);
+
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("amt-smoke-project");
+        folder.deleteRecursively();
+        folder.getChildFile ("Audio").createDirectory();
+        const auto audio = folder.getChildFile ("Audio/Bass.wav");
+        {
+            std::unique_ptr<juce::OutputStream> stream (audio.createOutputStream());
+            auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions {}.withSampleRate (rate).withNumChannels (1).withBitsPerSample (24));
+            juce::AudioBuffer<float> buf (1, (int) take.left.size());
+            buf.copyFrom (0, 0, take.left.data(), buf.getNumSamples());
+            writer->writeFromAudioSampleBuffer (buf, 0, buf.getNumSamples());
+        }
+
+        std::unique_ptr<juce::AudioProcessorEditor> ed (app->createEditorIfNeeded());
+        auto* appEditor = dynamic_cast<AlignMyTimeEditor*> (ed.get());
+        AppController controller (*app);
+        check (controller.getMenuBarNames() == juce::StringArray ({ "Datei", "Bearbeiten", "Ansicht", "Hilfe" }), "menu bar in German: Datei | Bearbeiten | Ansicht | Hilfe");
+        check (! controller.hasUnsavedChanges() && controller.getWindowTitle() == "Align My Time", "empty session: nothing to save");
+
+        app->loadAudioFile (audio);
+        for (int i = 0; i < 100 && ! app->getSession().hasSource(); ++i)
+            pumpMessages (50);
+        auto& s = app->getSession();
+        s.updateSettings ([] (SessionSettings& st) { st.manualBpm = 100.0; st.manualNumerator = 3; });
+        s.beginTapping (0.0);
+        for (auto d : take.downbeats)
+            s.addTap (d);
+        check (controller.hasUnsavedChanges() && controller.getWindowTitle().contains ("*"), "changes are marked in the title");
+
+        const auto projectFile = folder.getChildFile ("Song.amtp");
+        check (controller.saveProjectFile (projectFile).isEmpty() && projectFile.existsAsFile(), "project saved as .amtp");
+        check (! controller.hasUnsavedChanges() && controller.getWindowTitle().startsWith ("Song"), "saved: no '*' any more");
+
+        const auto xml = juce::parseXML (projectFile);
+        check (xml != nullptr && xml->hasTagName ("AlignMyTimeProject") && xml->getIntAttribute ("formatVersion") == project::formatVersion
+                   && xml->getChildByName ("Audio") != nullptr
+                   && xml->getChildByName ("Audio")->getChildByName ("File")->getStringAttribute ("relativePath") == "Audio/Bass.wav",
+               "project file: XML with format version and relative audio path");
+
+        // Moved folder: the audio is found next to the project.
+        const auto moved = folder.getSiblingFile ("amt-smoke-project-moved");
+        moved.deleteRecursively();
+        folder.copyDirectoryTo (moved);
+        const auto markerCount = s.getMarkers().size();
+        controller.getCommandManager().invokeDirectly (AppController::newProject, false);
+        pumpMessages (50);
+        check (! s.hasSource() && s.getMarkers().empty() && controller.getProjectFile() == juce::File(), "Datei › Neues Projekt starts empty");
+
+        folder.deleteRecursively();
+        check (controller.openProjectFile (moved.getChildFile ("Song.amtp")).isEmpty(), "moved project opens");
+        for (int i = 0; i < 100 && ! s.hasSource(); ++i)
+            pumpMessages (50);
+        check (s.hasSource() && app->getAudioFile() == moved.getChildFile ("Audio/Bass.wav"), "audio found next to the moved project");
+        check (s.getMarkers().size() == markerCount && s.getProjectTempo().signatureAt (0.0).numerator == 3
+                   && std::abs (s.getProjectTempo().bpmAt (0.0) - 100.0) < 1.0e-9,
+               "markers, tempo and time signature restored");
+        check (! controller.hasUnsavedChanges(), "freshly opened project has no unsaved changes");
+        check (controller.openProjectFile (moved.getChildFile ("Audio/Bass.wav")).isNotEmpty() && s.getMarkers().size() == markerCount,
+               "a non-project file is refused and changes nothing");
+
+        controller.getCommandManager().invokeDirectly (AppController::credits, false);
+        check (appEditor->getSettingsPanel() != nullptr && appEditor->getSettingsPanel()->getSection() == ui::SettingsPanel::Section::credits,
+               "Hilfe › Credits opens the settings at the credits");
+        check (! appEditor->getSettingsPanel()->hasSection (ui::SettingsPanel::Section::audio), "no device manager: no audio section");
+        controller.getCommandManager().invokeDirectly (AppController::shortcuts, false);
+        check (appEditor->getSettingsPanel() == nullptr && appEditor->getManual() != nullptr
+                   && appEditor->getManual()->getChapters()[(size_t) appEditor->getManual()->getChapterIndex()].id == "shortcuts",
+               "Hilfe › Tastenkürzel opens the manual at its chapter");
+
+        if (screenshots != juce::File())
+        {
+            appEditor->setVisible (true);
+            appEditor->showManual ("review");
+            pumpMessages (100);
+            saveSnapshot (*appEditor, screenshots.getChildFile ("6-handbuch.png"));
+        }
+        appEditor->closeOverlay();
+
+        controller.getCommandManager().invokeDirectly (AppController::languageEnglish, false);
+        check (controller.getMenuBarNames()[0] == "File" && tr ("Hilfe") == "Help", "language switch from the menu");
+        controller.getCommandManager().invokeDirectly (AppController::languageGerman, false);
+
+        ed.reset();
+        moved.deleteRecursively();
+    }
+
+    std::printf ("15. Manual\n");
+    {
+        auto chapterIds = [] (Language language) {
+            setLanguage (language);
+            juce::StringArray ids;
+            for (const auto& chapter : ui::loadManual())
+                ids.add (chapter.id);
+            return ids;
+        };
+        const auto german = chapterIds (Language::german);
+        const auto english = chapterIds (Language::english);
+        setLanguage (Language::german);
+        check (german.size() >= 10 && german == english && ! german.contains ({}), "German and English manual have the same chapters, all with ids");
+
+        const auto parsed = ui::parseManual ("# T\n## Kapitel\n<!-- id: k -->\nText **fett**\nweiter.\n\n- Punkt\n  Fortsetzung\n1. Schritt\n| A | B |\n|---|---|\n| `x` | y |\n");
+        using Kind = ui::ManualChapter::Block::Kind;
+        check (parsed.size() == 1 && parsed[0].id == "k" && parsed[0].blocks.size() == 5 && parsed[0].blocks[0].cells[0] == "Text **fett** weiter."
+                   && parsed[0].blocks[1].kind == Kind::bullet && parsed[0].blocks[1].cells[0] == "Punkt Fortsetzung"
+                   && parsed[0].blocks[2].kind == Kind::step && parsed[0].blocks[3].header && ! parsed[0].blocks[4].header,
+               "manual parser: paragraphs, lists, steps, tables");
     }
 
     std::printf ("\n%s\n", failures == 0 ? "ALL OK" : "FAILURES");

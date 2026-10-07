@@ -36,6 +36,7 @@ AlignMyTimeEditor::AlignMyTimeEditor (AlignMyTimeProcessor& p)
     : juce::AudioProcessorEditor (&p), juce::AudioProcessorEditorARAExtension (&p), processor (p)
 {
     setLookAndFeel (&lookAndFeel);
+    applyJuceTranslations();
     buildUi();
 
     processor.onTapFromMidi = [this] {
@@ -55,6 +56,7 @@ AlignMyTimeEditor::~AlignMyTimeEditor()
     processor.onTapFromMidi = nullptr;
     processor.getSession().removeChangeListener (this);
     settings.reset();
+    manual.reset();
     header.reset();
     tapPage.reset();
     reviewPage.reset();
@@ -66,12 +68,14 @@ void AlignMyTimeEditor::buildUi()
 {
     // Rebuilt from scratch when the language changes: every text is created in a constructor.
     settings.reset();
+    manual.reset();
     header = std::make_unique<ui::Header> (processor.getSession());
     tapPage = std::make_unique<ui::TapPage> (processor);
     reviewPage = std::make_unique<ui::ReviewPage> (processor);
     renderPage = std::make_unique<ui::RenderPage> (processor);
 
     header->onOpenSettings = [this] { showSettings(); };
+    header->onOpenManual = [this] { showManual(); };
     reviewPage->onRetapFrom = [this] (double seconds) {
         processor.getSession().setStep (Step::tap);
         tapPage->startPass (seconds);
@@ -86,8 +90,10 @@ void AlignMyTimeEditor::buildUi()
     resized();
 }
 
-void AlignMyTimeEditor::showSettings()
+void AlignMyTimeEditor::showSettings (ui::SettingsPanel::Section section)
 {
+    closeOverlay();
+
     // Captured outside the lambdas: MSVC resolves 'this' inside nested init-captures wrongly.
     juce::Component::SafePointer<AlignMyTimeEditor> safe (this);
 
@@ -104,18 +110,66 @@ void AlignMyTimeEditor::showSettings()
     auto closed = [safe] {
         juce::MessageManager::callAsync ([safe] {
             if (safe != nullptr)
-            {
-                safe->settings.reset();
-                safe->grabKeyboardFocus();
-                safe->repaint();
-            }
+                safe->closeOverlay();
         });
     };
 
     settings = std::make_unique<ui::SettingsPanel> (processor, std::move (languageChanged), std::move (closed));
+    settings->showSection (section);
     addAndMakeVisible (*settings);
     settings->setBounds (getLocalBounds());
     settings->grabKeyboardFocus();
+}
+
+void AlignMyTimeEditor::showManual (const juce::String& chapterId)
+{
+    closeOverlay();
+
+    juce::Component::SafePointer<AlignMyTimeEditor> safe (this);
+    manual = std::make_unique<ui::ManualView> ([safe] {
+        juce::MessageManager::callAsync ([safe] {
+            if (safe != nullptr)
+                safe->closeOverlay();
+        });
+    });
+    if (chapterId.isNotEmpty())
+        manual->showChapter (chapterId);
+    addAndMakeVisible (*manual);
+    manual->setBounds (getLocalBounds());
+    manual->grabKeyboardFocus();
+}
+
+bool AlignMyTimeEditor::closeOverlay()
+{
+    if (settings == nullptr && manual == nullptr)
+        return false;
+
+    settings.reset();
+    manual.reset();
+    grabKeyboardFocus();
+    repaint();
+    return true;
+}
+
+void AlignMyTimeEditor::openTempoEditor()
+{
+    closeOverlay();
+    header->openTempoEditor();
+}
+
+void AlignMyTimeEditor::exportResult()
+{
+    closeOverlay();
+    processor.stopPreview();
+    processor.getSession().setStep (Step::render);
+    showStep (Step::render);
+    renderPage->exportResult();
+}
+
+void AlignMyTimeEditor::zoomReview (int direction)
+{
+    if (shownStep == Step::review)
+        reviewPage->zoom (direction);
 }
 
 void AlignMyTimeEditor::paint (juce::Graphics& g)
@@ -151,6 +205,8 @@ void AlignMyTimeEditor::resized()
             page->setBounds (area);
     if (settings != nullptr)
         settings->setBounds (getLocalBounds());
+    if (manual != nullptr)
+        manual->setBounds (getLocalBounds());
 }
 
 ui::Page* AlignMyTimeEditor::currentPage()
@@ -189,7 +245,7 @@ void AlignMyTimeEditor::timerCallback()
     keyPoller.keyCode.store (tapKey.getKeyCode());
     keyPoller.needsCtrl.store (tapKey.getModifiers().isCtrlDown() || tapKey.getModifiers().isCommandDown());
     keyPoller.needsAlt.store (tapKey.getModifiers().isAltDown());
-    keyPoller.enabled.store (TapKeyPoller::isSupported() && settings == nullptr && shownStep == Step::tap && isShowing()
+    keyPoller.enabled.store (TapKeyPoller::isSupported() && settings == nullptr && manual == nullptr && shownStep == Step::tap && isShowing()
                              && processor.isAudioRunning() && juce::Process::isForegroundProcess());
 }
 
@@ -197,7 +253,7 @@ void AlignMyTimeEditor::mouseDown (const juce::MouseEvent& e)
 {
     // A click anywhere in the plug-in brings the keyboard back (tap key), but we never take
     // it on our own: when you click into the DAW, the DAW gets its keys.
-    if (e.eventComponent != nullptr && ! e.eventComponent->getWantsKeyboardFocus() && settings == nullptr)
+    if (e.eventComponent != nullptr && ! e.eventComponent->getWantsKeyboardFocus() && settings == nullptr && manual == nullptr)
         grabKeyboardFocus();
 }
 
@@ -205,6 +261,32 @@ bool AlignMyTimeEditor::keyPressed (const juce::KeyPress& key)
 {
     if (settings != nullptr)
         return settings->keyPressed (key);
+    if (manual != nullptr)
+        return manual->keyPressed (key);
+
+    if (key == juce::KeyPress::F1Key)
+    {
+        showManual();
+        return true;
+    }
+
+    // Undo / redo of marker edits and alignment settings (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z).
+    const auto mods = key.getModifiers();
+    if ((mods.isCtrlDown() || mods.isCommandDown()) && ! mods.isAltDown() && ! matchesTapKey (key))
+    {
+        const auto code = juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) key.getKeyCode());
+        auto& session = processor.getSession();
+        if (code == 'z' && ! mods.isShiftDown())
+        {
+            session.undo();
+            return true;
+        }
+        if (code == 'y' || (code == 'z' && mods.isShiftDown()))
+        {
+            session.redo();
+            return true;
+        }
+    }
 
     // While the poller listens (Windows), it does the tapping: swallow the key event so it isn't
     // counted twice.
@@ -219,6 +301,9 @@ bool AlignMyTimeEditor::keyPressed (const juce::KeyPress& key)
 //==============================================================================
 bool AlignMyTimeEditor::isInterestedInFileDrag (const juce::StringArray& files)
 {
+    if (onProjectFileDropped != nullptr && files.size() == 1 && juce::File (files[0]).hasFileExtension (".amtp"))
+        return true;
+
     const auto patterns = juce::StringArray::fromTokens (AlignMyTimeProcessor::audioFileWildcard(), ";", {});
     for (const auto& f : files)
         for (const auto& pattern : patterns)
@@ -243,6 +328,12 @@ void AlignMyTimeEditor::filesDropped (const juce::StringArray& files, int, int)
 {
     fileDragActive = false;
     repaint();
+    if (onProjectFileDropped != nullptr && files.size() == 1 && juce::File (files[0]).hasFileExtension (".amtp"))
+    {
+        onProjectFileDropped (juce::File (files[0]));
+        return;
+    }
+
     if (! files.isEmpty())
     {
         processor.getSession().setStep (Step::tap);

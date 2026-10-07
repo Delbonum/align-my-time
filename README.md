@@ -3,18 +3,20 @@
 Ein DAW-Plugin (VST3 / AU, mit ARA 2) und eine Standalone-App, die eine frei eingespielte Spur aufs Projekttempo (oder ein frei eingegebenes Tempo) bringt, und zwar ohne Warp-Tabellen oder Hitpoint-Dialoge. Aktuelle Version: siehe [CHANGELOG.md](CHANGELOG.md).
 
 1. **Tappen:** Die ganze Spur einmal anhören und im Takt eine Taste drücken (Leertaste oder eine andere Tap-Taste, Mausklick oder MIDI-Fußschalter), auf jede Eins oder auf jede Zählzeit.
-2. **Prüfen:** Marker kontrollieren und verschieben. Die Tempokurve zeigt Ausreißer, „Unsaubere Taps begradigen“ gleicht sie auf Wunsch aus. Hier wählst du Time-Stretch oder Schneiden + Crossfade und hörst vorher/nachher an.
+2. **Prüfen:** Marker kontrollieren und verschieben. Die Tempokurve zeigt Ausreißer, „Unsaubere Taps begradigen“ gleicht sie auf Wunsch aus. Hier wählst du Time-Stretch oder Schneiden + Verschieben und hörst vorher/nachher an.
 3. **Rendern:** Ergebnis als neue Spur (WAV per Drag & Drop) oder direkt in der Spur ersetzen (nicht-destruktiv).
 
 | 1 · Tappen | 2 · Prüfen | 3 · Rendern |
 |---|---|---|
 | ![Tappen](docs/screenshots/1-tappen.png) | ![Prüfen](docs/screenshots/2-pruefen.png) | ![Rendern](docs/screenshots/3-rendern.png) |
 
-| Standalone (Englisch) | Einstellungen |
-|---|---|
-| ![Standalone](docs/screenshots/4-standalone-englisch.png) | ![Einstellungen](docs/screenshots/5-einstellungen.png) |
+| Standalone (Englisch) | Einstellungen | Handbuch |
+|---|---|---|
+| ![Standalone](docs/screenshots/4-standalone-englisch.png) | ![Einstellungen](docs/screenshots/5-einstellungen.png) | ![Handbuch](docs/screenshots/6-handbuch.png) |
 
 Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
+
+**Ausführliche Anleitung:** [Handbuch](docs/HANDBUCH.md) (englisch: [Manual](docs/MANUAL.md)). Es steckt auch in der App: **Hilfe › Handbuch**, `F1` oder das **?** oben rechts.
 
 ## Benutzung in Cubase
 
@@ -39,9 +41,11 @@ Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
 
 **Ohne ARA** (andere DAWs, oder als normaler Insert) setzt du das Plugin als Insert auf die Spur und spielst das Projekt einmal ab. Das Plugin nimmt die Spur dabei auf, und du kannst im selben Durchgang mittappen. Jedes weitere Abspielen in Schritt 1 ergänzt die Aufnahme. Oben links zeigt „ARA“ oder „Insert“, in welchem Modus das Plugin gerade läuft.
 
-**Standalone-App:** Audiodatei laden (WAV, AIFF, FLAC, Ogg, MP3), Tempo oben rechts eingeben, tappen, prüfen, als WAV speichern. Die Audio-Einstellungen findest du im „Options“-Menü des Fensters.
+**Standalone-App:** Audiodatei laden (WAV, AIFF, FLAC, Ogg, MP3), Tempo oben rechts eingeben, tappen, prüfen, als WAV exportieren. Die Menüleiste (Datei | Bearbeiten | Ansicht | Hilfe) bietet Projekte (`.amtp`: neu, öffnen, speichern, zuletzt geöffnet), Rückgängig/Wiederherstellen, die Schritte, Zoom, Sprache, Handbuch und Credits. Das Projektformat steht in [docs/PROJEKTFORMAT.md](docs/PROJEKTFORMAT.md).
 
-**Einstellungen** (Zahnrad oben rechts): Sprache (Deutsch/Englisch), Tap-Taste und Credits mit der aktuellen Version.
+**Rückgängig:** `Strg+Z` / `Strg+Y` (auch im Plugin) für Marker, Raster, Begradigen, Verfahren und Ziel-Tempo.
+
+**Einstellungen** (Zahnrad oben rechts, im Standalone auch **Bearbeiten › Einstellungen …**): Sprache (Deutsch/Englisch), Tap-Taste, im Standalone **Audio & MIDI** (Ausgang, MIDI-Eingang für den Fußschalter) und Credits mit der aktuellen Version.
 
 Die Entscheidungen hinter dem Konzept stehen in [docs/ENTSCHEIDUNGEN.md](docs/ENTSCHEIDUNGEN.md), lokales Weiterentwickeln in [docs/ENTWICKLUNG.md](docs/ENTWICKLUNG.md).
 
@@ -67,13 +71,15 @@ cmake -S . -B build-core -DAMT_BUILD_PLUGIN=OFF && cmake --build build-core && c
 ### Tests
 
 - `tests/CoreTests.cpp` deckt Tempo-Map (inklusive Tempo- und Taktartwechsel), Tap-Bereinigung, Transienten-Einrasten, Warp-Map und beide Render-Verfahren ab. Gemessen wird, dass jeder Schlag nach dem Ausrichten auf dem Projektraster liegt (< 1 ms) und dass die Tonhöhe erhalten bleibt.
-- `plugin/tests/PluginSmokeTest.cpp` simuliert einen Host: Eine schwankend eingespielte Spur läuft durchs Plugin, ein „Fußschalter“ tappt per MIDI mit, danach folgen Rendern, Ersetzen in der Spur, Speichern und Laden, Mehrspur (Phasengleichheit) und das Begradigen der Taps. Mit einem Ordner als Argument speichert der Test die Screenshots: `xvfb-run ./build/plugin/AlignMyTimeSmokeTest docs/screenshots`.
+- `plugin/tests/PluginSmokeTest.cpp` simuliert einen Host: Eine schwankend eingespielte Spur läuft durchs Plugin, ein „Fußschalter“ tappt per MIDI mit, danach folgen Rendern, Ersetzen in der Spur, Speichern und Laden, Mehrspur (Phasengleichheit), das Begradigen der Taps, Rückgängig, Projektdateien und Menüleiste der Standalone-App sowie das Handbuch. Mit einem Ordner als Argument speichert der Test die Screenshots: `xvfb-run ./build/plugin/AlignMyTimeSmokeTest docs/screenshots`.
 
 ## Aufbau
 
 ```
 core/      DAW-unabhängig, ohne JUCE: Tempo-Map, Marker, Transienten, Warp-Map, Renderer
-plugin/    JUCE-Plugin: ARA-Anbindung, Sitzung, Vorhören, Export, Oberfläche (Source/ui)
+plugin/    JUCE-Plugin: ARA-Anbindung, Sitzung, Vorhören, Export, Projektdateien, Oberfläche (Source/ui),
+           Standalone-App mit Menüleiste (Source/standalone)
+docs/      Handbuch (Deutsch/Englisch, auch in die App eingebaut), Projektformat, Entscheidungen
 tests/     Kern-Tests
 ```
 

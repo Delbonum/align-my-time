@@ -1,5 +1,7 @@
 #include "SettingsPanel.h"
 
+#include <juce_audio_utils/juce_audio_utils.h>
+
 namespace amt::plugin::ui
 {
 
@@ -8,13 +10,21 @@ SettingsPanel::SettingsPanel (AlignMyTimeProcessor& p, std::function<void()> lan
 {
     setWantsKeyboardFocus (true);
 
-    const juce::StringArray sections { tr ("Allgemein"), tr ("Bedienung"), tr ("Credits") };
-    for (int i = 0; i < sections.size(); ++i)
+    sections = { Section::general, Section::controls };
+    if (processor.getDeviceManager() != nullptr)
+        sections.push_back (Section::audio);
+    sections.push_back (Section::credits);
+
+    for (auto section : sections)
     {
-        auto* item = navItems.add (new juce::TextButton (sections[i]));
+        const auto label = section == Section::general    ? tr ("Allgemein")
+                           : section == Section::controls ? tr ("Bedienung")
+                           : section == Section::audio    ? tr ("Audio & MIDI")
+                                                          : tr ("Credits");
+        auto* item = navItems.add (new juce::TextButton (label));
         item->getProperties().set ("nav", true);
         item->setWantsKeyboardFocus (false);
-        item->onClick = [this, i] { showSection (i); };
+        item->onClick = [this, section] { showSection (section); };
         addAndMakeVisible (item);
     }
 
@@ -53,6 +63,15 @@ SettingsPanel::SettingsPanel (AlignMyTimeProcessor& p, std::function<void()> lan
     };
     addChildComponent (dragNeedsCtrl);
 
+    if (auto* manager = processor.getDeviceManager())
+    {
+        // Output and MIDI input (foot switch); the app works with files, so no audio input.
+        deviceSelector = std::make_unique<juce::AudioDeviceSelectorComponent> (*manager, 0, 0, 1, 2, true, false, true, false);
+        deviceViewport.setViewedComponent (deviceSelector.get(), false);
+        deviceViewport.setScrollBarsShown (true, false);
+        addChildComponent (deviceViewport);
+    }
+
     close.setButtonText (tr ("Schließen"));
     close.getProperties().set ("icon", "check");
     setKind (close, ButtonKind::primary);
@@ -63,23 +82,34 @@ SettingsPanel::SettingsPanel (AlignMyTimeProcessor& p, std::function<void()> lan
     addAndMakeVisible (close);
 
     updateCustomKeyButton();
-    showSection (0);
+    showSection (Section::general);
+}
+
+SettingsPanel::~SettingsPanel()
+{
+    deviceViewport.setViewedComponent (nullptr, false);
 }
 
 juce::Rectangle<int> SettingsPanel::card() const
 {
-    return getLocalBounds().withSizeKeepingCentre (780, 520);
+    return getLocalBounds().withSizeKeepingCentre (juce::jmin (getWidth() - 32, 860), juce::jmin (getHeight() - 32, 580));
 }
 
-void SettingsPanel::showSection (int index)
+bool SettingsPanel::hasSection (Section section) const
 {
-    currentSection = juce::jlimit (0, navItems.size() - 1, index);
-    for (int i = 0; i < navItems.size(); ++i)
-        navItems[i]->setToggleState (i == currentSection, juce::dontSendNotification);
+    return std::find (sections.begin(), sections.end(), section) != sections.end();
+}
 
-    language.setVisible (currentSection == 0);
-    tapKey.setVisible (currentSection == 1);
-    dragNeedsCtrl.setVisible (currentSection == 1);
+void SettingsPanel::showSection (Section section)
+{
+    currentSection = hasSection (section) ? section : Section::general;
+    for (size_t i = 0; i < sections.size(); ++i)
+        navItems[(int) i]->setToggleState (sections[i] == currentSection, juce::dontSendNotification);
+
+    language.setVisible (currentSection == Section::general);
+    tapKey.setVisible (currentSection == Section::controls);
+    dragNeedsCtrl.setVisible (currentSection == Section::controls);
+    deviceViewport.setVisible (currentSection == Section::audio && deviceSelector != nullptr);
     capturingKey = false;
     updateCustomKeyButton();
     repaint();
@@ -87,7 +117,7 @@ void SettingsPanel::showSection (int index)
 
 void SettingsPanel::updateCustomKeyButton()
 {
-    customKey.setVisible (currentSection == 1 && getTapKey() == TapKey::custom);
+    customKey.setVisible (currentSection == Section::controls && getTapKey() == TapKey::custom);
     customKey.setButtonText (capturingKey ? tr ("Jetzt Taste drücken … (Esc bricht ab)")
                                           : tr ("Taste festlegen:") + " " + describeTapKey (TapKey::custom));
 }
@@ -129,6 +159,14 @@ void SettingsPanel::resized()
     markerLabel = controls.removeFromTop (22);
     dragNeedsCtrl.setBounds (controls.removeFromTop (32));
     markerHint = controls;
+
+    // Audio & MIDI
+    auto audio = content;
+    audioHint = audio.removeFromBottom (44);
+    audio.removeFromBottom (8);
+    deviceViewport.setBounds (audio);
+    if (deviceSelector != nullptr)
+        deviceSelector->setSize (audio.getWidth() - deviceViewport.getScrollBarThickness() - 4, 600);
 }
 
 void SettingsPanel::paint (juce::Graphics& g)
@@ -150,13 +188,23 @@ void SettingsPanel::paint (juce::Graphics& g)
     g.setColour (colours::border);
     g.fillRect (juce::Rectangle<int> (navArea.getRight() + 13, navArea.getY(), 1, navArea.getHeight()));
 
-    if (currentSection == 0)
+    if (currentSection == Section::general)
     {
         drawSectionLabel (g, languageLabel, tr ("Sprache"));
         return;
     }
 
-    if (currentSection == 1)
+    if (currentSection == Section::audio)
+    {
+        g.setColour (colours::muted);
+        g.setFont (uiFont (12.5f));
+        g.drawFittedText (tr ("Für einen MIDI-Fußschalter oder ein Keyboard zum Tappen den MIDI-Eingang aktivieren. "
+                              "Ein Audioeingang wird nicht gebraucht: Die App arbeitet mit Audiodateien."),
+                          audioHint, juce::Justification::topLeft, 3, 1.0f);
+        return;
+    }
+
+    if (currentSection == Section::controls)
     {
         drawSectionLabel (g, tapKeyLabel, tr ("Tap-Taste"));
         drawSectionLabel (g, markerLabel, tr ("Marker bearbeiten (Schritt „Prüfen“)"));

@@ -22,9 +22,6 @@ public:
     /** Song time audible at this very moment (interpolated with the wall clock). */
     double nowSeconds() const noexcept;
 
-    /** Song time of a sample inside the current audio block (for MIDI taps). */
-    double secondsAtSample (int sampleOffset, double sampleRate) const noexcept;
-
 private:
     std::atomic<bool> running { false };
     std::atomic<uint32_t> sequence { 0 };

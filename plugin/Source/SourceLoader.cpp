@@ -6,6 +6,32 @@
 namespace amt::plugin
 {
 
+void resampleInPlace (juce::AudioBuffer<float>& buffer, double fromRate, double toRate)
+{
+    if (std::abs (fromRate - toRate) <= 0.5 || fromRate <= 0.0 || toRate <= 0.0)
+        return;
+
+    const int outLength = (int) std::llround (buffer.getNumSamples() * toRate / fromRate);
+    juce::AudioBuffer<float> resampled (buffer.getNumChannels(), outLength);
+    for (int c = 0; c < buffer.getNumChannels(); ++c)
+    {
+        juce::LagrangeInterpolator interpolator;
+        interpolator.process (fromRate / toRate, buffer.getReadPointer (c), resampled.getWritePointer (c), outLength);
+    }
+    buffer = std::move (resampled);
+}
+
+std::shared_ptr<AudioClip> makeClip (const juce::AudioBuffer<float>& buffer, int numChannels, double sampleRate, int64_t startSample)
+{
+    auto clip = std::make_shared<AudioClip> (numChannels, buffer.getNumSamples(), sampleRate, startSample);
+    for (int c = 0; c < numChannels && buffer.getNumChannels() > 0; ++c)
+    {
+        const auto* src = buffer.getReadPointer (juce::jmin (c, buffer.getNumChannels() - 1));
+        std::copy (src, src + buffer.getNumSamples(), clip->channels[(size_t) c].begin());
+    }
+    return clip;
+}
+
 std::optional<TempoMap> tempoFromMusicalContext (juce::ARAMusicalContext* context)
 {
     if (context == nullptr)
@@ -141,24 +167,8 @@ void TrackLoader::run()
         reader->read (&buffer, 0, sourceLength, sourceStart, true, true);
 
         // Bring everything to the session's sample rate.
-        if (std::abs (sourceRate - sampleRate) > 0.5)
-        {
-            const int outLength = (int) std::llround (sourceLength * sampleRate / sourceRate);
-            juce::AudioBuffer<float> resampled (buffer.getNumChannels(), outLength);
-            for (int c = 0; c < buffer.getNumChannels(); ++c)
-            {
-                juce::LagrangeInterpolator interpolator;
-                interpolator.process (sourceRate / sampleRate, buffer.getReadPointer (c), resampled.getWritePointer (c), outLength);
-            }
-            buffer = std::move (resampled);
-        }
-
-        AudioClip regionClip (buffer.getNumChannels(), buffer.getNumSamples(), sampleRate, (int64_t) std::llround (r.playbackStart * sampleRate));
-        for (int c = 0; c < buffer.getNumChannels(); ++c)
-            std::copy (buffer.getReadPointer (c), buffer.getReadPointer (c) + buffer.getNumSamples(), regionClip.channels[(size_t) c].begin());
-
-        clip->mixIn (regionClip);
-        progress.store ((double) (i + 1) / (double) regions.size());
+        resampleInPlace (buffer, sourceRate, sampleRate);
+        clip->mixIn (*makeClip (buffer, buffer.getNumChannels(), sampleRate, (int64_t) std::llround (r.playbackStart * sampleRate)));
     }
 
     if (threadShouldExit())

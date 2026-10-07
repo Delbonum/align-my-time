@@ -17,27 +17,76 @@ namespace
     std::atomic<int> currentLanguage { -1 };
     std::atomic<int> currentTapKey { -1 };
 
-    struct SettingsHolder
+    juce::PropertiesFile::Options settingsOptions()
     {
-        SettingsHolder()
-        {
-            juce::PropertiesFile::Options options;
-            options.applicationName = "Align My Time";
-            options.filenameSuffix = "settings";
-            options.folderName = "Align My Time";
-            options.osxLibrarySubFolder = "Application Support";
-            options.storageFormat = juce::PropertiesFile::storeAsXML;
-            file = std::make_unique<juce::PropertiesFile> (options);
-        }
+        juce::PropertiesFile::Options options;
+        options.applicationName = "Align My Time";
+        options.filenameSuffix = "settings";
+        options.folderName = "Align My Time";
+        options.osxLibrarySubFolder = "Application Support";
+        options.storageFormat = juce::PropertiesFile::storeAsXML;
+        return options;
+    }
 
-        std::unique_ptr<juce::PropertiesFile> file;
-    };
+    std::unique_ptr<juce::PropertiesFile>& settingsFile()
+    {
+        static std::unique_ptr<juce::PropertiesFile> file;
+        return file;
+    }
+
+    /** German texts for JUCE's own components (audio device selector, alert buttons). */
+    const char* const juceGerman = R"juce(
+"OK" = "OK"
+"Cancel" = "Abbrechen"
+"Yes" = "Ja"
+"No" = "Nein"
+"none" = "keins"
+"Audio device type:" = "Audiotreiber:"
+"Output:" = "Ausgang:"
+"Input:" = "Eingang:"
+"Device:" = "Gerät:"
+"Test" = "Test"
+"Plays a test tone" = "Spielt einen Testton"
+"Sample rate:" = "Samplerate:"
+"Audio buffer size:" = "Puffergröße:"
+"Active output channels:" = "Aktive Ausgangskanäle:"
+"Active input channels:" = "Aktive Eingangskanäle:"
+"(no audio output channels found)" = "(keine Audioausgänge gefunden)"
+"(no audio input channels found)" = "(keine Audioeingänge gefunden)"
+"Active MIDI inputs:" = "Aktive MIDI-Eingänge:"
+"No MIDI inputs available" = "Keine MIDI-Eingänge vorhanden"
+"MIDI Output:" = "MIDI-Ausgang:"
+"Control Panel" = "Treiber-Einstellungen"
+"Opens the device's own control panel" = "Öffnet die Einstellungen des Audiotreibers"
+"Reset Device" = "Gerät zurücksetzen"
+"Resets the audio interface - sometimes needed after changing a device's properties in its custom control panel" = "Setzt das Audio-Interface zurück, z. B. nach Änderungen in den Treiber-Einstellungen"
+"Show advanced settings..." = "Erweiterte Einstellungen …"
+"Error when trying to open audio device!" = "Das Audiogerät kann nicht geöffnet werden!"
+"Bluetooth MIDI" = "Bluetooth-MIDI"
+"Scan for bluetooth MIDI devices" = "Nach Bluetooth-MIDI-Geräten suchen"
+)juce";
 }
 
 juce::PropertiesFile& appSettings()
 {
-    static SettingsHolder holder;
-    return *holder.file;
+    auto& file = settingsFile();
+    if (file == nullptr)
+        file = std::make_unique<juce::PropertiesFile> (settingsOptions());
+    return *file;
+}
+
+void useSettingsFile (const juce::File& file)
+{
+    settingsFile() = std::make_unique<juce::PropertiesFile> (file, settingsOptions());
+    currentLanguage.store (-1);
+    currentTapKey.store (-1);
+}
+
+void applyJuceTranslations()
+{
+    juce::LocalisedStrings::setCurrentMappings (getLanguage() == Language::german
+                                                    ? new juce::LocalisedStrings (juce::String::fromUTF8 (juceGerman), false)
+                                                    : nullptr);
 }
 
 Language getLanguage()
@@ -57,6 +106,7 @@ void setLanguage (Language language)
     currentLanguage.store (language == Language::english ? 1 : 0);
     appSettings().setValue ("language", language == Language::english ? 1 : 0);
     appSettings().saveIfNeeded();
+    applyJuceTranslations();
 }
 
 juce::String tr (const char* germanUtf8)

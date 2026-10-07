@@ -6,23 +6,25 @@
 namespace amt::plugin::ui
 {
 
-/** "Einstellungen" overlay: navigation on the left (Allgemein / Bedienung / Credits),
-    the selected section on the right. */
+/** "Einstellungen" overlay: navigation on the left (Allgemein / Bedienung / Audio & MIDI / Credits),
+    the selected section on the right. "Audio & MIDI" only exists in the standalone app. */
 class SettingsPanel : public juce::Component
 {
 public:
+    enum class Section { general, controls, audio, credits };
+
     SettingsPanel (AlignMyTimeProcessor& processor, std::function<void()> onLanguageChanged, std::function<void()> onClose);
+    ~SettingsPanel() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
     bool keyPressed (const juce::KeyPress&) override;
 
-    /** For tests and screenshots: 0 = Allgemein, 1 = Bedienung, 2 = Credits. */
-    void showSection (int index);
-
-    /** True while waiting for the user to press the key for "Eigene Taste". */
-    bool isCapturingKey() const { return capturingKey; }
+    /** Shows a section; "Audio & MIDI" falls back to "Allgemein" in the plug-in. */
+    void showSection (Section section);
+    Section getSection() const { return currentSection; }
+    bool hasSection (Section section) const;
 
 private:
     juce::Rectangle<int> card() const;
@@ -31,8 +33,9 @@ private:
     AlignMyTimeProcessor& processor;
     std::function<void()> onLanguageChanged, onClose;
 
+    std::vector<Section> sections;
     juce::OwnedArray<juce::TextButton> navItems;
-    int currentSection = 0;
+    Section currentSection = Section::general;
 
     // Allgemein
     SegmentedControl language { { "Deutsch", "English" } };
@@ -44,9 +47,13 @@ private:
     bool capturingKey = false;
     ToggleRow dragNeedsCtrl { tr ("Marker nur mit gedrückter Strg-Taste verschieben") };
 
+    // Audio & MIDI (standalone)
+    std::unique_ptr<juce::Component> deviceSelector;
+    juce::Viewport deviceViewport;
+
     juce::TextButton close;
 
-    juce::Rectangle<int> navArea, content, languageLabel, tapKeyLabel, tapKeyHint, markerLabel, markerHint;
+    juce::Rectangle<int> navArea, content, languageLabel, tapKeyLabel, tapKeyHint, markerLabel, markerHint, audioHint;
 };
 
 } // namespace amt::plugin::ui

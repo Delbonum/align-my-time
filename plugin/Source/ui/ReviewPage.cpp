@@ -16,18 +16,13 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
 
     configureButton (zoomOut, {}, "minus", ButtonKind::ghost);
     zoomOut.setTooltip (tr ("Herauszoomen (Mausrad)"));
-    zoomOut.onClick = [this] { wave.zoomBy (0.5, 0.5 * (wave.getStartSeconds() + wave.getEndSeconds())); };
+    zoomOut.onClick = [this] { zoom (-1); };
     configureButton (zoomIn, {}, "plus", ButtonKind::ghost);
     zoomIn.setTooltip (tr ("Hineinzoomen (Mausrad)"));
-    zoomIn.onClick = [this] {
-        // Zoom towards the selected marker if there is one.
-        const int sel = session.getSelectedMarker();
-        const double anchor = sel >= 0 ? session.getMarkers()[(size_t) sel].seconds : 0.5 * (wave.getStartSeconds() + wave.getEndSeconds());
-        wave.zoomBy (2.0, anchor);
-    };
+    zoomIn.onClick = [this] { zoom (1); };
     configureButton (zoomFit, tr ("Alles"), "", ButtonKind::ghost);
     zoomFit.setTooltip (tr ("Ganze Aufnahme zeigen"));
-    zoomFit.onClick = [this] { wave.zoomToFit(); };
+    zoomFit.onClick = [this] { zoom (0); };
     for (auto* b : { &zoomOut, &zoomIn, &zoomFit })
     {
         b->setWantsKeyboardFocus (false);
@@ -245,7 +240,7 @@ void ReviewPage::paint (juce::Graphics& g)
     g.fillAll (colours::panel);
 
     const int sel = session.getSelectedMarker();
-    drawSectionLabel (g, leftColumn.withHeight (16), sel >= 0 ? tr ("Marker · ") + selectedInfo().upToFirstOccurrenceOf ("\n", false, false) : juce::String ("Marker bearbeiten"));
+    drawSectionLabel (g, leftColumn.withHeight (16), sel >= 0 ? tr ("Marker · ") + selectedInfo().upToFirstOccurrenceOf ("\n", false, false) : tr ("Marker bearbeiten"));
     drawSectionLabel (g, middleColumn.withHeight (16), tr ("So wird angepasst"));
     drawSectionLabel (g, rightColumn.withHeight (16), tr ("VORHÖREN"));
 
@@ -445,8 +440,7 @@ void ReviewPage::refresh()
 
     // Follow the playhead page by page when zoomed in.
     if (playing)
-        if (auto clip = session.getSource())
-            wave.keepVisible (ab.getSelected() == 1 ? session.getPlan().warp.targetToSource (preview.positionSeconds()) : preview.positionSeconds());
+        wave.keepVisible (ab.getSelected() == 1 ? session.getPlan().warp.targetToSource (preview.positionSeconds()) : preview.positionSeconds());
     wave.setDragNeedsCtrl (markerDragNeedsCtrl());
 
     const bool waiting = playWhenRendered && session.isRendering();
@@ -507,6 +501,21 @@ void ReviewPage::startPreviewAt (double from)
     processor.startPreview (session.getPlan().warp.sourceToTarget (from), true, false, session.getSettings().clickInPreview);
 }
 
+void ReviewPage::zoom (int direction)
+{
+    if (direction == 0)
+    {
+        wave.zoomToFit();
+        return;
+    }
+
+    // Zoom towards the selected marker if there is one.
+    const int sel = session.getSelectedMarker();
+    const double centre = 0.5 * (wave.getStartSeconds() + wave.getEndSeconds());
+    const double anchor = direction > 0 && sel >= 0 ? session.getMarkers()[(size_t) sel].seconds : centre;
+    wave.zoomBy (direction > 0 ? 2.0 : 0.5, anchor);
+}
+
 void ReviewPage::stepUnit (int direction)
 {
     const auto current = session.getSettings().tapUnit;
@@ -525,10 +534,13 @@ bool ReviewPage::handleKey (const juce::KeyPress& key)
         togglePreview();
         return true;
     }
-    if (key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey)
+    // Compared by key code: KeyPress == leftKey would not match while Shift is held.
+    const int code = key.getKeyCode();
+    const auto mods = key.getModifiers();
+    if ((code == juce::KeyPress::leftKey || code == juce::KeyPress::rightKey) && ! mods.isCtrlDown() && ! mods.isCommandDown() && ! mods.isAltDown())
     {
-        const double step = key.getModifiers().isShiftDown() ? 0.001 : 0.005;
-        session.nudgeSelected (key == juce::KeyPress::leftKey ? -step : step);
+        const double step = mods.isShiftDown() ? 0.001 : 0.005;
+        session.nudgeSelected (code == juce::KeyPress::leftKey ? -step : step);
         return true;
     }
     if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey)

@@ -33,7 +33,6 @@ struct SessionSettings
     double tapOffsetMs = 0.0;           ///< added to every tap (negative = taps are late)
     Destination destination = Destination::newTrack;
     bool exportFromProjectStart = true; ///< pad the file so it can be dropped at bar 1
-    bool muteOriginal = true;
     std::optional<int> firstBar;        ///< user override of the bar the first marker lands on
     bool manualTempo = false;           ///< target tempo typed in instead of taken from the host
     double manualBpm = 120.0;
@@ -68,6 +67,9 @@ class AlignSession : public juce::ChangeBroadcaster
 public:
     AlignSession();
     ~AlignSession() override;
+
+    /** Back to an empty session (new project): no audio, no markers, default settings. */
+    void reset();
 
     //==============================================================================
     // Source and project
@@ -116,7 +118,6 @@ public:
     const std::vector<Marker>& getMarkers() const { return straightenedMarkers; }
     /** How far marker `index` was moved by straightening (seconds). */
     double getStraightenShift (int index) const;
-    const std::vector<MarkerIssue>& getIssues() const { return issues; }
     int getNumInsertedMarkers() const;
 
     int getSelectedMarker() const { return selectedMarker; }
@@ -134,6 +135,14 @@ public:
         (e.g. tapped on 1 and 3 while "every one" was selected). */
     std::optional<TapUnit> getTapUnitSuggestion() const { return tapUnitSuggestion; }
     bool canAlign() const { return hasSource() && markers.size() >= 2; }
+
+    //==============================================================================
+    // Undo / redo of everything that changes the result: markers (a whole tapping pass is one
+    // step), grid unit, first bar, straightening, snapping, method and target tempo.
+    bool canUndo() const { return ! undoStack.empty(); }
+    bool canRedo() const { return ! redoStack.empty(); }
+    void undo();
+    void redo();
 
     //==============================================================================
     // Settings
@@ -178,6 +187,20 @@ private:
     void markChanged (bool affectsResult = true);
     void finishRender (std::vector<std::shared_ptr<const AudioClip>> results, int generation);
     void rebuildSource();
+    void moveMarkerTo (int index, double seconds, bool snap);
+
+    /** The part of the session undo restores. */
+    struct EditState
+    {
+        std::vector<Marker> markers;
+        SessionSettings settings;
+    };
+    EditState captureEditState() const { return { markers, settings }; }
+    void applyEditState (const EditState& state);
+    /** Remembers `before` for undo. Edits with the same non-empty `key` in quick succession
+        (dragging a marker, moving a slider) or within one tapping pass become one step. */
+    void recordUndo (const juce::String& key, EditState before);
+    void recordUndo (const juce::String& key) { recordUndo (key, captureEditState()); }
 
     std::shared_ptr<const AudioClip> ownTrack;
     std::vector<ExtraTrack> extraTracks;
@@ -197,7 +220,6 @@ private:
 
     std::vector<Marker> markers;             ///< as tapped, snapped and edited
     std::vector<Marker> straightenedMarkers; ///< what is shown and aligned
-    std::vector<MarkerIssue> issues;
     int selectedMarker = -1;
     AlignmentPlan plan;
     std::optional<TapUnit> tapUnitSuggestion;
@@ -216,6 +238,11 @@ private:
     bool replaceActive = false;
     bool restoredReplaceActive = false;
     SharedClip replacement;
+
+    std::vector<EditState> undoStack, redoStack;
+    juce::String lastUndoKey;
+    double lastUndoTime = 0.0;
+    int tapPass = 0;
 
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 

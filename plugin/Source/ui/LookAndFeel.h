@@ -44,6 +44,10 @@ public:
                            juce::Slider::SliderStyle, juce::Slider&) override;
     void fillTextEditorBackground (juce::Graphics&, int w, int h, juce::TextEditor&) override;
     void drawTextEditorOutline (juce::Graphics&, int w, int h, juce::TextEditor&) override;
+    /** Shortcuts as "Strg+S" / "Ctrl+S" instead of JUCE's "ctrl + S". */
+    void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>& area, bool isSeparator, bool isActive, bool isHighlighted,
+                            bool isTicked, bool hasSubMenu, const juce::String& text, const juce::String& shortcutKeyText,
+                            const juce::Drawable* icon, const juce::Colour* textColour) override;
 };
 
 /** Button roles from the design. Set as the "kind" property of a TextButton. */

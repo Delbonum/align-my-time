@@ -74,6 +74,37 @@ AlignSession::~AlignSession()
     renderJob.reset();
 }
 
+void AlignSession::reset()
+{
+    renderJob.reset();
+    ownTrack = nullptr;
+    extraTracks.clear();
+    source = nullptr;
+    detector = nullptr;
+    sourceDescription.clear();
+
+    markers.clear();
+    fixedMarkers.clear();
+    liveTaps.clear();
+    tapPassStart = std::numeric_limits<double>::infinity();
+    selectedMarker = -1;
+    settings = {};
+    step = Step::tap;
+
+    alignedForUi = nullptr;
+    alignedTracks.clear();
+    renderingTracks.clear();
+    alignedUpToDate = false;
+    restoredReplaceActive = false;
+    undoStack.clear();
+    redoStack.clear();
+    lastUndoKey.clear();
+
+    setReplaceActive (false);
+    applyTempo();
+    markChanged();
+}
+
 void AlignSession::setSource (std::shared_ptr<const AudioClip> clip, const juce::String& description)
 {
     ownTrack = std::move (clip);
@@ -203,6 +234,11 @@ void AlignSession::applyTempo()
 //==============================================================================
 void AlignSession::beginTapping (double fromSeconds)
 {
+    // The whole pass is one undo step: from the first marker it discards, or else its first tap.
+    ++tapPass;
+    if (std::any_of (markers.begin(), markers.end(), [fromSeconds] (const Marker& m) { return m.seconds >= fromSeconds - 1.0e-6; }))
+        recordUndo ("tap" + juce::String (tapPass));
+
     fixedMarkers = markers;
     fixedMarkers.erase (std::remove_if (fixedMarkers.begin(), fixedMarkers.end(),
                                         [fromSeconds] (const Marker& m) { return m.seconds >= fromSeconds - 1.0e-6; }),
@@ -215,12 +251,17 @@ void AlignSession::beginTapping (double fromSeconds)
 
 void AlignSession::addTap (double songSeconds)
 {
+    recordUndo ("tap" + juce::String (tapPass));
     liveTaps.push_back (songSeconds + settings.tapOffsetMs / 1000.0);
     rebuildMarkers();
 }
 
 void AlignSession::undoLastTap()
 {
+    if (liveTaps.empty() && fixedMarkers.empty())
+        return;
+
+    recordUndo ({});
     if (! liveTaps.empty())
         liveTaps.pop_back();
     else if (! fixedMarkers.empty())
@@ -230,6 +271,8 @@ void AlignSession::undoLastTap()
 
 void AlignSession::clearMarkers()
 {
+    if (! markers.empty())
+        recordUndo ({});
     fixedMarkers.clear();
     liveTaps.clear();
     selectedMarker = -1;
@@ -241,7 +284,6 @@ void AlignSession::rebuildMarkers()
     if (liveTaps.empty())
     {
         markers = fixedMarkers;
-        issues.clear();
     }
     else
     {
@@ -252,7 +294,7 @@ void AlignSession::rebuildMarkers()
             all.push_back (m.tappedSeconds);
         all.insert (all.end(), liveTaps.begin(), liveTaps.end());
 
-        auto cleaned = cleanUpTaps (all, {}, &issues);
+        auto cleaned = cleanUpTaps (all);
         if (detector != nullptr && settings.snapToAttacks)
             snapMarkersToAttacks (cleaned, *detector);
 
@@ -262,7 +304,6 @@ void AlignSession::rebuildMarkers()
         for (const auto& m : cleaned)
             if (m.tappedSeconds > lastFixed + 1.0e-6)
                 markers.push_back (m);
-        // Note: issue indices refer to the cleaned sequence; the UI only shows their count.
     }
 
     std::sort (markers.begin(), markers.end(), [] (const Marker& a, const Marker& b) { return a.seconds < b.seconds; });
@@ -286,6 +327,12 @@ void AlignSession::moveMarker (int index, double seconds)
     if (! juce::isPositiveAndBelow (index, (int) markers.size()))
         return;
 
+    recordUndo ("move" + juce::String (index));
+    moveMarkerTo (index, seconds, settings.snapToAttacks);
+}
+
+void AlignSession::moveMarkerTo (int index, double seconds, bool snap)
+{
     // Keep the order: a marker can't be dragged past its neighbours.
     const double lower = index > 0 ? markers[(size_t) index - 1].seconds + 0.01 : -1.0e9;
     const double upper = index + 1 < (int) markers.size() ? markers[(size_t) index + 1].seconds - 0.01 : 1.0e9;
@@ -296,7 +343,7 @@ void AlignSession::moveMarker (int index, double seconds)
     m.origin = MarkerOrigin::manual;
     m.snappedToAttack = false;
 
-    if (detector != nullptr && settings.snapToAttacks)
+    if (detector != nullptr && snap)
         if (auto attack = detector->findAttackNear (m.seconds, 0.02))
             if (*attack > lower && *attack < upper)
             {
@@ -311,18 +358,17 @@ void AlignSession::moveMarker (int index, double seconds)
 
 void AlignSession::nudgeSelected (double deltaSeconds)
 {
-    if (selectedMarker < 0)
+    if (! juce::isPositiveAndBelow (selectedMarker, (int) markers.size()))
         return;
 
     // Nudging is precise by definition: no snapping afterwards. Starts from where the marker is shown.
-    const bool snap = settings.snapToAttacks;
-    settings.snapToAttacks = false;
-    moveMarker (selectedMarker, straightenedMarkers[(size_t) selectedMarker].seconds + deltaSeconds);
-    settings.snapToAttacks = snap;
+    recordUndo ("move" + juce::String (selectedMarker));
+    moveMarkerTo (selectedMarker, straightenedMarkers[(size_t) selectedMarker].seconds + deltaSeconds, false);
 }
 
 void AlignSession::addMarker (double seconds)
 {
+    recordUndo ({});
     Marker m { seconds, seconds, MarkerOrigin::manual, false };
     if (detector != nullptr && settings.snapToAttacks)
         if (auto attack = detector->findAttackNear (seconds, 0.05))
@@ -341,9 +387,10 @@ void AlignSession::addMarker (double seconds)
 
 void AlignSession::removeSelected()
 {
-    if (selectedMarker < 0)
+    if (! juce::isPositiveAndBelow (selectedMarker, (int) markers.size()))
         return;
 
+    recordUndo ({});
     markers.erase (markers.begin() + selectedMarker);
     selectedMarker = juce::jmin (selectedMarker, (int) markers.size() - 1);
     fixedMarkers = markers;
@@ -353,6 +400,7 @@ void AlignSession::removeSelected()
 
 void AlignSession::setSnapToAttacks (bool shouldSnap)
 {
+    recordUndo ({});
     settings.snapToAttacks = shouldSnap;
 
     for (auto& m : markers)
@@ -392,9 +440,14 @@ void AlignSession::updateSettings (const std::function<void (SessionSettings&)>&
     const bool affectsResult = before.tapUnit != settings.tapUnit || before.method != settings.method
                                || before.quality != settings.quality || ! juce::approximatelyEqual (before.crossfadeMs, settings.crossfadeMs)
                                || before.firstBar != settings.firstBar || ! juce::approximatelyEqual (before.straighten, settings.straighten);
+    const bool tempoChanged = before.manualTempo != settings.manualTempo || ! juce::approximatelyEqual (before.manualBpm, settings.manualBpm)
+                              || before.manualNumerator != settings.manualNumerator || before.manualDenominator != settings.manualDenominator;
 
-    if (before.manualTempo != settings.manualTempo || ! juce::approximatelyEqual (before.manualBpm, settings.manualBpm)
-        || before.manualNumerator != settings.manualNumerator || before.manualDenominator != settings.manualDenominator)
+    // Sliders and the tempo editor send a stream of changes: one undo step per gesture.
+    if (affectsResult || tempoChanged)
+        recordUndo ("settings", { markers, before });
+
+    if (tempoChanged)
     {
         applyTempo(); // marks the result as changed if the target actually moved
         if (affectsResult)
@@ -451,6 +504,69 @@ void AlignSession::markChanged (bool affectsResult)
         alignedUpToDate = false;
     }
     sendChangeMessage();
+}
+
+//==============================================================================
+void AlignSession::recordUndo (const juce::String& key, EditState before)
+{
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+    const bool sameGesture = key.isNotEmpty() && key == lastUndoKey && (key.startsWith ("tap") || now - lastUndoTime < 1500.0);
+    lastUndoKey = key;
+    lastUndoTime = now;
+    if (sameGesture)
+        return;
+
+    undoStack.push_back (std::move (before));
+    if (undoStack.size() > 200)
+        undoStack.erase (undoStack.begin());
+    redoStack.clear();
+}
+
+void AlignSession::applyEditState (const EditState& state)
+{
+    markers = state.markers;
+    fixedMarkers = markers;
+    liveTaps.clear();
+    tapPassStart = std::numeric_limits<double>::infinity();
+    selectedMarker = juce::jmin (selectedMarker, (int) markers.size() - 1);
+    lastUndoKey.clear();
+
+    // Only what changes the result; preview and export options stay as they are.
+    const auto& s = state.settings;
+    settings.tapUnit = s.tapUnit;
+    settings.firstBar = s.firstBar;
+    settings.straighten = s.straighten;
+    settings.snapToAttacks = s.snapToAttacks;
+    settings.method = s.method;
+    settings.quality = s.quality;
+    settings.crossfadeMs = s.crossfadeMs;
+    settings.manualTempo = s.manualTempo;
+    settings.manualBpm = s.manualBpm;
+    settings.manualNumerator = s.manualNumerator;
+    settings.manualDenominator = s.manualDenominator;
+
+    applyTempo();
+    markChanged();
+}
+
+void AlignSession::undo()
+{
+    if (undoStack.empty())
+        return;
+    redoStack.push_back (captureEditState());
+    const auto state = std::move (undoStack.back());
+    undoStack.pop_back();
+    applyEditState (state);
+}
+
+void AlignSession::redo()
+{
+    if (redoStack.empty())
+        return;
+    undoStack.push_back (captureEditState());
+    const auto state = std::move (redoStack.back());
+    redoStack.pop_back();
+    applyEditState (state);
 }
 
 //==============================================================================
@@ -561,7 +677,7 @@ namespace ids
         tapped ("tapped"), origin ("origin"), snapped ("snapped"), tapMode ("tapMode"), tapUnit ("tapUnit"), manualTempo ("manualTempo"), manualBpm ("manualBpm"),
         manualNumerator ("manualNumerator"), manualDenominator ("manualDenominator"), clickBlend ("clickBlend"), method ("method"), quality ("quality"),
         crossfade ("crossfadeMs"), snap ("snapToAttacks"), straighten ("straighten"), leadIn ("leadIn"), click ("clickInPreview"), tapOffset ("tapOffsetMs"),
-        destination ("destination"), fromStart ("exportFromProjectStart"), muteOriginal ("muteOriginal"), firstBar ("firstBar"),
+        destination ("destination"), fromStart ("exportFromProjectStart"), firstBar ("firstBar"),
         trackName ("trackName"), step ("step"), replace ("replaceActive"), version ("version"),
         extraTracks ("ExtraTracks"), extraTrack ("ExtraTrack"), kind ("kind"), id ("id"), name ("name");
 }
@@ -586,7 +702,6 @@ juce::ValueTree AlignSession::toValueTree() const
     tree.setProperty (ids::tapOffset, settings.tapOffsetMs, nullptr);
     tree.setProperty (ids::destination, (int) settings.destination, nullptr);
     tree.setProperty (ids::fromStart, settings.exportFromProjectStart, nullptr);
-    tree.setProperty (ids::muteOriginal, settings.muteOriginal, nullptr);
     tree.setProperty (ids::firstBar, settings.firstBar.has_value() ? *settings.firstBar : -100000, nullptr);
     tree.setProperty (ids::trackName, settings.trackName, nullptr);
     tree.setProperty (ids::step, (int) step, nullptr);
@@ -641,7 +756,6 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
     settings.tapOffsetMs = tree.getProperty (ids::tapOffset, 0.0);
     settings.destination = (Destination) (int) tree.getProperty (ids::destination, 0);
     settings.exportFromProjectStart = tree.getProperty (ids::fromStart, true);
-    settings.muteOriginal = tree.getProperty (ids::muteOriginal, true);
     const int firstBar = tree.getProperty (ids::firstBar, -100000);
     settings.firstBar = firstBar > -100000 ? std::optional<int> (firstBar) : std::nullopt;
     settings.trackName = tree.getProperty (ids::trackName).toString();
@@ -661,6 +775,9 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
     fixedMarkers = markers;
     liveTaps.clear();
     selectedMarker = -1;
+    undoStack.clear();
+    redoStack.clear();
+    lastUndoKey.clear();
     applyTempo();
     markChanged();
 

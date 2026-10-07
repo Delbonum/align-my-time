@@ -42,6 +42,23 @@ AmtLookAndFeel::AmtLookAndFeel()
     setColour (juce::PopupMenu::textColourId, colours::text);
     setColour (juce::PopupMenu::highlightedBackgroundColourId, colours::accent);
     setColour (juce::PopupMenu::highlightedTextColourId, colours::ink);
+
+    // Tempo editor, audio device settings, dialogs and the standalone menu bar
+    setColour (juce::ComboBox::backgroundColourId, colours::background);
+    setColour (juce::ComboBox::textColourId, colours::text);
+    setColour (juce::ComboBox::outlineColourId, colours::border);
+    setColour (juce::ComboBox::arrowColourId, colours::muted);
+    setColour (juce::ComboBox::buttonColourId, colours::panel2);
+    setColour (juce::ComboBox::focusedOutlineColourId, colours::accent);
+    setColour (juce::ListBox::backgroundColourId, colours::background);
+    setColour (juce::ListBox::outlineColourId, colours::border);
+    setColour (juce::ListBox::textColourId, colours::text);
+    setColour (juce::ToggleButton::textColourId, colours::text);
+    setColour (juce::ToggleButton::tickColourId, colours::accent);
+    setColour (juce::AlertWindow::backgroundColourId, colours::panel);
+    setColour (juce::AlertWindow::textColourId, colours::text);
+    setColour (juce::AlertWindow::outlineColourId, colours::border);
+    setColour (juce::DocumentWindow::textColourId, colours::text);
 }
 
 void setKind (juce::TextButton& button, ButtonKind kind)
@@ -212,6 +229,18 @@ void AmtLookAndFeel::fillTextEditorBackground (juce::Graphics& g, int w, int h, 
 {
     g.setColour (colours::background);
     g.fillRoundedRectangle (juce::Rectangle<float> (0.0f, 0.0f, (float) w, (float) h), 8.0f);
+}
+
+void AmtLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area, bool isSeparator, bool isActive,
+                                        bool isHighlighted, bool isTicked, bool hasSubMenu, const juce::String& text,
+                                        const juce::String& shortcutKeyText, const juce::Drawable* icon, const juce::Colour* textColour)
+{
+    const auto shortcut = shortcutKeyText.replace ("ctrl + ", getLanguage() == Language::german ? "Strg+" : "Ctrl+")
+                              .replace ("command + ", "Cmd+")
+                              .replace ("shift + ", "Shift+")
+                              .replace ("alt + ", "Alt+")
+                              .replace ("option + ", "Option+");
+    juce::LookAndFeel_V4::drawPopupMenuItem (g, area, isSeparator, isActive, isHighlighted, isTicked, hasSubMenu, text, shortcut, icon, textColour);
 }
 
 void AmtLookAndFeel::drawTextEditorOutline (juce::Graphics& g, int w, int h, juce::TextEditor& editor)

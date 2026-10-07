@@ -11,6 +11,13 @@
 namespace amt::plugin
 {
 
+/** Brings `buffer` from `fromRate` to `toRate` (no-op if they match). */
+void resampleInPlace (juce::AudioBuffer<float>& buffer, double fromRate, double toRate);
+
+/** Copies `buffer` into a clip at `startSample`, with exactly `numChannels` channels
+    (missing ones repeat the last channel, extra ones are dropped). */
+std::shared_ptr<AudioClip> makeClip (const juce::AudioBuffer<float>& buffer, int numChannels, double sampleRate, int64_t startSample);
+
 /** Reads the tempo map and time signatures the host provides for a musical context. */
 std::optional<TempoMap> tempoFromMusicalContext (juce::ARAMusicalContext* context);
 
@@ -35,8 +42,6 @@ public:
                  std::function<void (Result)> onDone);
     ~TrackLoader() override;
 
-    double getProgress() const { return progress.load(); }
-
 private:
     struct Region
     {
@@ -50,7 +55,6 @@ private:
     Result result;
     double sampleRate;
     int channels;
-    std::atomic<double> progress { 0.0 };
     std::function<void (Result)> onDone;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 };
@@ -63,7 +67,6 @@ public:
     void prepare (double sampleRate, int numChannels);
 
     void setArmed (bool shouldRecord) noexcept { armed.store (shouldRecord); }
-    bool isArmed() const noexcept { return armed.load(); }
 
     /** Audio thread. */
     void push (const juce::AudioBuffer<float>& input, juce::int64 songSample) noexcept;

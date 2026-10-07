@@ -18,11 +18,18 @@ public:
     bool handleKey (const juce::KeyPress&) override;
     void sessionChanged() override;
 
+    /** Renders if needed, then writes the file(s) (standalone: asks where). */
+    void exportResult();
+
 private:
     class DragTile;
 
     void render();
     void finishPendingAction();
+    /** Writes one file per track: `firstFile` for a single track, the others named after it. */
+    void exportTo (const juce::File& firstFile);
+    /** The standalone app has no track to replace: the result is always a file. */
+    Destination destination() const;
     std::vector<double> projectBarLines (double start, double end) const;
 
     WaveformView before, after;
@@ -32,6 +39,7 @@ private:
     ToggleRow fromProjectStart { tr ("Datei ab Projektanfang (Takt 1)") };
     std::unique_ptr<DragTile> dragTile;
     juce::TextButton showInFolder;
+    std::unique_ptr<juce::FileChooser> chooser;
 
     juce::TextButton back, listen, renderButton;
 

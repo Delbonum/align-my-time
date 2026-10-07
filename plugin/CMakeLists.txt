@@ -53,10 +53,13 @@ target_sources(AlignMyTime PRIVATE
     Source/PluginEditor.cpp
     Source/PluginProcessor.cpp
     Source/PreviewPlayer.cpp
+    Source/ProjectFile.cpp
     Source/SourceLoader.cpp
     Source/Translations.cpp
+    Source/standalone/AppController.cpp
     Source/ui/Header.cpp
     Source/ui/LookAndFeel.cpp
+    Source/ui/ManualView.cpp
     Source/ui/RenderPage.cpp
     Source/ui/ReviewPage.cpp
     Source/ui/SettingsPanel.cpp
@@ -65,13 +68,26 @@ target_sources(AlignMyTime PRIVATE
     Source/ui/TempoLane.cpp
     Source/ui/WaveformView.cpp)
 
-# The icon also serves as the logo in the editor's header.
+# The icon also serves as the logo in the editor's header; the manual is shown under Hilfe › Handbuch.
 juce_add_binary_data(AlignMyTimeAssets
     HEADER_NAME AlignMyTimeAssets.h
     NAMESPACE AlignMyTimeAssets
-    SOURCES Resources/icon-256.png)
+    SOURCES
+        Resources/icon-256.png
+        ${CMAKE_CURRENT_SOURCE_DIR}/../docs/HANDBUCH.md
+        ${CMAKE_CURRENT_SOURCE_DIR}/../docs/MANUAL.md)
 
 target_include_directories(AlignMyTime PRIVATE Source)
+
+# Our own standalone app: menu bar, project files, audio settings inside the app's settings.
+if(TARGET AlignMyTime_Standalone)
+    target_sources(AlignMyTime_Standalone PRIVATE Source/standalone/StandaloneApp.cpp)
+    target_include_directories(AlignMyTime_Standalone PRIVATE Source)
+    target_link_libraries(AlignMyTime_Standalone PRIVATE amt_core AlignMyTimeAssets)
+    if(MSVC)
+        target_compile_options(AlignMyTime_Standalone PRIVATE /utf-8)
+    endif()
+endif()
 
 if(MSVC)
     target_compile_options(AlignMyTime PRIVATE /utf-8)
@@ -83,7 +99,8 @@ target_compile_definitions(AlignMyTime PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_MODAL_LOOPS_PERMITTED=1
-    JUCE_USE_MP3AUDIOFORMAT=1)
+    JUCE_USE_MP3AUDIOFORMAT=1
+    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
 
 target_link_libraries(AlignMyTime
     PRIVATE

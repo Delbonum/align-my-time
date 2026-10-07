@@ -62,6 +62,13 @@ void setMarkerDragNeedsCtrl (bool needsCtrl);
 /** Settings shared by all instances and the standalone app (language, tap key ...). */
 juce::PropertiesFile& appSettings();
 
+/** Tests: keep the settings in `file` instead of the user's settings. */
+void useSettingsFile (const juce::File& file);
+
+/** Translates the texts of JUCE's own components (audio device selector, "OK"/"Cancel") into
+    the current language. Called by setLanguage() and when an editor opens. */
+void applyJuceTranslations();
+
 /** Display version, e.g. "1.1.0". */
 juce::String versionString();
 

@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "ui/Header.h"
 #include "ui/LookAndFeel.h"
+#include "ui/ManualView.h"
 #include "ui/RenderPage.h"
 #include "ui/ReviewPage.h"
 #include "ui/SettingsPanel.h"
@@ -55,9 +56,30 @@ public:
     void fileDragExit (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray& files, int, int) override;
 
-    /** For tests: open the settings overlay. */
-    void showSettings();
+    /** Opens the settings overlay at a section (gear button, standalone menu). */
+    void showSettings (ui::SettingsPanel::Section section = ui::SettingsPanel::Section::general);
     ui::SettingsPanel* getSettingsPanel() { return settings.get(); }
+
+    /** Opens the manual, optionally at a chapter id (F1, "?" button, standalone menu). */
+    void showManual (const juce::String& chapterId = {});
+    ui::ManualView* getManual() { return manual.get(); }
+
+    /** Closes the settings or the manual; true if one was open. */
+    bool closeOverlay();
+
+    void openTempoEditor();
+
+    /** Rebuilds every page, e.g. after the language was switched from the standalone menu. */
+    void rebuildUi() { buildUi(); }
+
+    /** Review step: +1 zooms in, -1 out, 0 shows everything. */
+    void zoomReview (int direction);
+
+    /** Goes to "Rendern" and exports the result (rendering first if needed). */
+    void exportResult();
+
+    /** Standalone: a project file (.amtp) was dropped onto the window. */
+    std::function<void (const juce::File&)> onProjectFileDropped;
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -75,6 +97,7 @@ private:
     std::unique_ptr<ui::ReviewPage> reviewPage;
     std::unique_ptr<ui::RenderPage> renderPage;
     std::unique_ptr<ui::SettingsPanel> settings;
+    std::unique_ptr<ui::ManualView> manual;
     TapKeyPoller keyPoller { processor };
     Step shownStep = Step::tap;
     bool fileDragActive = false;

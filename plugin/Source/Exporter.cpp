@@ -9,23 +9,27 @@ juce::File Exporter::defaultFolder()
     return juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Align My Time");
 }
 
-juce::File Exporter::writeWav (const AudioClip& clip, const juce::String& name, bool fromProjectStart, juce::String& errorMessage)
+juce::File Exporter::newFileFor (const juce::String& name)
 {
-    auto folder = defaultFolder();
+    const auto safeName = juce::File::createLegalFileName (name.isNotEmpty() ? name : juce::String ("Align My Time"));
+    return defaultFolder().getNonexistentChildFile (safeName, ".wav", false);
+}
+
+bool Exporter::writeWav (const AudioClip& clip, const juce::File& file, bool fromProjectStart, juce::String& errorMessage)
+{
+    const auto folder = file.getParentDirectory();
     if (! folder.createDirectory())
     {
         errorMessage = tr ("Ordner kann nicht angelegt werden: ") + folder.getFullPathName();
-        return {};
+        return false;
     }
 
-    const auto safeName = juce::File::createLegalFileName (name.isNotEmpty() ? name : juce::String ("Align My Time"));
-    auto file = folder.getNonexistentChildFile (safeName, ".wav", false);
-
+    file.deleteFile();
     std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
     if (stream == nullptr)
     {
         errorMessage = tr ("Datei kann nicht geschrieben werden: ") + file.getFullPathName();
-        return {};
+        return false;
     }
 
     juce::WavAudioFormat wav;
@@ -37,7 +41,7 @@ juce::File Exporter::writeWav (const AudioClip& clip, const juce::String& name, 
     if (writer == nullptr)
     {
         errorMessage = tr ("WAV-Writer konnte nicht erstellt werden.");
-        return {};
+        return false;
     }
 
     // Material before song position 0 (a stretched pick-up) is cut when padding from the start.
@@ -63,7 +67,7 @@ juce::File Exporter::writeWav (const AudioClip& clip, const juce::String& name, 
     }
 
     writer.reset();
-    return file;
+    return true;
 }
 
 } // namespace amt::plugin

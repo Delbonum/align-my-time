@@ -31,6 +31,7 @@ Der erste Build dauert einige Minuten (JUCE). Danach geht es inkrementell schnel
 | Build-Ordner | `build*/` | Wird jederzeit neu erzeugt (in `.gitignore`) |
 | Heruntergeladene Abhängigkeiten | `build/_deps/` | Lädt CMake neu; offline? Siehe unten |
 | Exportierte WAVs des Plugins | `Musik/Align My Time/` | Nutzerdaten, nicht Teil des Projekts |
+| Projekte der Standalone-App | Standard: `Dokumente/Align My Time/` | Nutzerdaten (`.amtp`) |
 | Aufnahmen im Insert-Modus | `%APPDATA%\Align My Time\Captures` bzw. `~/Library/Application Support/Align My Time/Captures` | Gehören zu Cubase-Projekten, können gelöscht werden, wenn das Projekt weg ist |
 
 Offline bauen: Abhängigkeiten einmal klonen und CMake per `-DFETCHCONTENT_SOURCE_DIR_JUCE=…`, `-DFETCHCONTENT_SOURCE_DIR_ARA_SDK=…`, `-DFETCHCONTENT_SOURCE_DIR_SIGNALSMITH-STRETCH=…` und `-DFETCHCONTENT_SOURCE_DIR_SIGNALSMITH-LINEAR=…` darauf zeigen lassen.
@@ -39,7 +40,7 @@ Offline bauen: Abhängigkeiten einmal klonen und CMake per `-DFETCHCONTENT_SOURC
 
 - **Schnell (ohne JUCE):** `cmake -S . -B build-core -DAMT_BUILD_PLUGIN=OFF && cmake --build build-core && ctest --test-dir build-core`
 - **Komplett:** `ctest --test-dir build -C Release`. Der End-to-End-Test braucht unter Linux einen (virtuellen) Bildschirm: `xvfb-run ctest …`.
-- **Standalone-App:** `build/plugin/AlignMyTime_artefacts/Release/Standalone/`. Die App läuft ohne ARA im Insert-Modus. Gut zum schnellen Ausprobieren der Oberfläche.
+- **Standalone-App:** `build/plugin/AlignMyTime_artefacts/Release/Standalone/`. Eine eigene App (`plugin/Source/standalone/StandaloneApp.cpp`, `JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1`) statt JUCEs Standard-Fenster: Menüleiste, Projektdateien, Audio/MIDI in den Einstellungen. Menü, Befehle und Projekte stecken in `AppController` (im gemeinsamen Code, damit der End-to-End-Test sie prüfen kann).
 - **Plugin-Validierung:** [pluginval](https://github.com/Tracktion/pluginval) prüft das VST3 auf typische Host-Probleme.
 - **Debuggen in Cubase:** Debug-Build erstellen (`--config Debug`), das Debug-`.vst3` installieren und in Visual Studio / Xcode „An Prozess anhängen“ → Cubase.
 
@@ -49,7 +50,10 @@ Offline bauen: Abhängigkeiten einmal klonen und CMake per `-DFETCHCONTENT_SOURC
 - `plugin/Source/AlignSession.*`: Zustand der drei Schritte (Marker, Einstellungen, Rendern im Hintergrund, Speichern).
 - `plugin/Source/PluginProcessor.*`: Audio-Thread, Host-Anbindung, Insert-Aufnahme, MIDI-Taps.
 - `plugin/Source/PlaybackRenderer.*` / `SourceLoader.*` / `DocumentController.*`: ARA.
-- `plugin/Source/ui/`: eine Datei pro Seite. Texte sind Deutsch und als UTF-8 im Quelltext (`de ("…")`).
+- `plugin/Source/ProjectFile.*`: Projektdateien `.amtp` der Standalone-App (Format: `docs/PROJEKTFORMAT.md`).
+- `plugin/Source/standalone/`: Menüleiste und Befehle (`AppController`), das Fenster (`StandaloneApp.cpp`, nur im Standalone-Target).
+- `plugin/Source/ui/`: eine Datei pro Seite. Texte sind Deutsch, als UTF-8 im Quelltext und in `tr ("…")` verpackt; die englische Fassung steht in `Translations.cpp` (`tools/check_translations.py` prüft das, `tools/update_translations.py` ergänzt neue Einträge aus einer JSON-Datei).
+- `docs/HANDBUCH.md` / `docs/MANUAL.md`: das Handbuch. Es wird in die App eingebaut (`ui/ManualView`), Änderungen dort erscheinen also nach dem nächsten Build auch unter **Hilfe › Handbuch**. Jedes Kapitel (`## …`) braucht eine `<!-- id: … -->`-Zeile, in beiden Sprachen dieselben.
 
 ## Mit Claude weiterarbeiten
 

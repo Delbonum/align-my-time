@@ -16,6 +16,9 @@ public:
     void resized() override;
     void refresh() override;
     bool handleKey (const juce::KeyPress&) override;
+
+    /** +1 zooms in (towards the selected marker), -1 out, 0 shows everything. */
+    void zoom (int direction);
     void sessionChanged() override;
 
     /** Asks the editor to go back to step 1 and re-tap from a position. */

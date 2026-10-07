@@ -7,6 +7,11 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+namespace juce
+{
+class AudioDeviceManager;
+}
+
 namespace amt::plugin
 {
 
@@ -44,6 +49,7 @@ public:
 
     //==============================================================================
     AlignSession& getSession() { return session; }
+    const AlignSession& getSession() const { return session; }
     PreviewPlayer& getPreview() { return preview; }
 
     /** True when the host gave us the track's events via ARA. */
@@ -61,6 +67,17 @@ public:
     const juce::File& getAudioFile() const { return sourceFile; }
 
     bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
+
+    /** Standalone app: the audio device manager, shown in the settings ("Audio & MIDI"). */
+    void setDeviceManager (juce::AudioDeviceManager* manager) { deviceManager = manager; }
+    juce::AudioDeviceManager* getDeviceManager() const { return deviceManager; }
+
+    /** Starts over: no audio, no markers, default settings (standalone "Neues Projekt"). */
+    void newProject();
+
+    /** Restores a state written by getStateInformation() (or a project file's session).
+        "audioFile" names the audio file to load; extra tracks are loaded from their ids. */
+    void restoreState (const juce::ValueTree& tree);
 
     //==============================================================================
     // Extra tracks: several tracks recorded together (e.g. all drum microphones) are aligned with
@@ -138,6 +155,7 @@ private:
     std::map<juce::String, std::unique_ptr<juce::Thread>> extraFileLoaders;
     std::map<juce::String, std::unique_ptr<TrackLoader>> hostTrackLoaders;
     juce::WeakReference<DocumentController> documentController;
+    juce::AudioDeviceManager* deviceManager = nullptr;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
     juce::String loadError;
 

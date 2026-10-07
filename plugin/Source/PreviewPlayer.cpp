@@ -37,11 +37,6 @@ double PlayPositionTracker::nowSeconds() const noexcept
     return blockSeconds;
 }
 
-double PlayPositionTracker::secondsAtSample (int sampleOffset, double sampleRate) const noexcept
-{
-    return blockSeconds + sampleOffset / sampleRate;
-}
-
 //==============================================================================
 void PreviewPlayer::prepare (double sampleRate)
 {

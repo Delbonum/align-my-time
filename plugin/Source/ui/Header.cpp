@@ -92,6 +92,17 @@ Header::Header (AlignSession& s) : session (s)
     };
     addAndMakeVisible (settingsButton);
 
+    setKind (helpButton, ButtonKind::ghost);
+    helpButton.setButtonText ("?");
+    helpButton.setTitle (tr ("Handbuch"));
+    helpButton.setTooltip (tr ("Handbuch (F1)"));
+    helpButton.setWantsKeyboardFocus (false);
+    helpButton.onClick = [this] {
+        if (onOpenManual)
+            onOpenManual();
+    };
+    addAndMakeVisible (helpButton);
+
     session.addChangeListener (this);
     update();
 }
@@ -103,9 +114,12 @@ void Header::mouseMove (const juce::MouseEvent& e)
 
 void Header::mouseUp (const juce::MouseEvent& e)
 {
-    if (! tempoChip.contains (e.getPosition()))
-        return;
+    if (tempoChip.contains (e.getPosition()))
+        openTempoEditor();
+}
 
+void Header::openTempoEditor()
+{
     auto editor = std::make_unique<TempoEditor> (session);
     auto* top = getTopLevelComponent();
     juce::CallOutBox::launchAsynchronously (std::move (editor), top->getLocalArea (this, tempoChip), top);
@@ -148,6 +162,8 @@ void Header::resized()
         middle.removeFromLeft (24);
     }
     settingsButton.setBounds (area.removeFromRight (36).withSizeKeepingCentre (36, 36));
+    area.removeFromRight (4);
+    helpButton.setBounds (area.removeFromRight (36).withSizeKeepingCentre (36, 36));
     area.removeFromRight (8);
     tempoChip = area.removeFromRight (250).withSizeKeepingCentre (250, 32);
 }

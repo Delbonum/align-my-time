@@ -43,12 +43,9 @@ namespace
         if (reader == nullptr)
             return nullptr;
 
-        auto clip = std::make_shared<AudioClip> ((int) reader->numChannels, reader->lengthInSamples, reader->sampleRate, startSample);
         juce::AudioBuffer<float> buffer ((int) reader->numChannels, (int) reader->lengthInSamples);
         reader->read (&buffer, 0, (int) reader->lengthInSamples, 0, true, true);
-        for (int c = 0; c < buffer.getNumChannels(); ++c)
-            std::copy (buffer.getReadPointer (c), buffer.getReadPointer (c) + buffer.getNumSamples(), clip->channels[(size_t) c].begin());
-        return clip;
+        return makeClip (buffer, buffer.getNumChannels(), reader->sampleRate, startSample);
     }
 
     /** Reads an audio file on a background thread, resampled to the session's rate. */
@@ -74,25 +71,8 @@ namespace
             if (threadShouldExit())
                 return;
 
-            if (! juce::approximatelyEqual (reader->sampleRate, rate))
-            {
-                const int outLength = (int) std::llround (length * rate / reader->sampleRate);
-                juce::AudioBuffer<float> resampled (buffer.getNumChannels(), outLength);
-                for (int c = 0; c < buffer.getNumChannels(); ++c)
-                {
-                    juce::LagrangeInterpolator interpolator;
-                    interpolator.process (reader->sampleRate / rate, buffer.getReadPointer (c), resampled.getWritePointer (c), outLength);
-                }
-                buffer = std::move (resampled);
-            }
-
-            auto clip = std::make_shared<AudioClip> (channels, buffer.getNumSamples(), rate, 0);
-            for (int c = 0; c < channels; ++c)
-            {
-                const auto* src = buffer.getReadPointer (juce::jmin (c, buffer.getNumChannels() - 1));
-                std::copy (src, src + buffer.getNumSamples(), clip->channels[(size_t) c].begin());
-            }
-            onDone (clip, {});
+            resampleInPlace (buffer, reader->sampleRate, rate);
+            onDone (makeClip (buffer, channels, rate, 0), {});
         }
 
         juce::File file;
@@ -778,11 +758,30 @@ void AlignMyTimeProcessor::getStateInformation (juce::MemoryBlock& destData)
 
 void AlignMyTimeProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    auto xml = getXmlFromBinary (data, sizeInBytes);
-    if (xml == nullptr)
-        return;
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+        restoreState (juce::ValueTree::fromXml (*xml));
+}
 
-    const auto tree = juce::ValueTree::fromXml (*xml);
+void AlignMyTimeProcessor::newProject()
+{
+    preview.stop();
+    if (fileLoader != nullptr)
+        fileLoader->stopThread (5000);
+    fileLoader.reset();
+    for (auto& [id, extraLoader] : extraFileLoaders)
+        extraLoader->stopThread (5000);
+    extraFileLoaders.clear();
+    hostTrackLoaders.clear();
+
+    sourceFile = juce::File();
+    loadError.clear();
+    recorder.reset();
+    session.reset();
+    publishLinkedTracks();
+}
+
+void AlignMyTimeProcessor::restoreState (const juce::ValueTree& tree)
+{
     session.restoreFromValueTree (tree);
     loadMissingExtraTracks();
 
