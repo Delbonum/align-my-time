@@ -49,7 +49,7 @@ jobs:
       - name: Upload plug-in
         uses: actions/upload-artifact@v4
         with:
-          name: Align-my-Time-${{ runner.os }}
+          name: Align-My-Time-${{ runner.os }}
           path: |
             build/plugin/AlignMyTime_artefacts/Release/VST3
             build/plugin/AlignMyTime_artefacts/Release/AU
