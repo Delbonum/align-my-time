@@ -11,6 +11,21 @@ void resampleInPlace (juce::AudioBuffer<float>& buffer, double fromRate, double 
     if (std::abs (fromRate - toRate) <= 0.5 || fromRate <= 0.0 || toRate <= 0.0)
         return;
 
+    // Going down: remove what the lower rate cannot hold first (4th-order Butterworth), or it would alias.
+    if (toRate < fromRate)
+    {
+        for (const double q : { 0.5412, 1.3066 })
+        {
+            const auto coefficients = juce::IIRCoefficients::makeLowPass (fromRate, 0.45 * toRate, q);
+            for (int c = 0; c < buffer.getNumChannels(); ++c)
+            {
+                juce::IIRFilter filter;
+                filter.setCoefficients (coefficients);
+                filter.processSamples (buffer.getWritePointer (c), buffer.getNumSamples());
+            }
+        }
+    }
+
     const int outLength = (int) std::llround (buffer.getNumSamples() * toRate / fromRate);
     juce::AudioBuffer<float> resampled (buffer.getNumChannels(), outLength);
     for (int c = 0; c < buffer.getNumChannels(); ++c)

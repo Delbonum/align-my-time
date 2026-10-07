@@ -54,6 +54,11 @@ juce::String describeTapKey (TapKey key);
 /** True if `key` is the current tap key (same key, same Ctrl/Alt state; Shift is ignored). */
 bool matchesTapKey (const juce::KeyPress& key);
 
+/** Tap latency compensation (ms) added to every tap: negative when taps come late
+    (reaction time, MIDI or keyboard latency). Applies to all instances. */
+double getTapOffsetMs();
+void setTapOffsetMs (double milliseconds);
+
 /** Review step: true = markers move only with Ctrl held, a plain click plays from there (default);
     false = plain drag moves markers, Ctrl+click plays from there. */
 bool markerDragNeedsCtrl();

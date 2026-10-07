@@ -47,7 +47,17 @@ AlignMyTimeEditor::AlignMyTimeEditor (AlignMyTimeProcessor& p)
 
     setWantsKeyboardFocus (true);
     addMouseListener (this, true);
-    setSize (1120, 720);
+
+    // Resizable with fixed proportions; the size is remembered (plug-in and app separately).
+    // Read before the limits are set: setting them already resizes (and would store that size).
+    const auto scaleKey = processor.isStandalone() ? "standaloneScale" : "editorScale";
+    const double scale = juce::jlimit (0.5, 2.0, appSettings().getDoubleValue (scaleKey, 1.0));
+    setResizable (true, false);
+    setResizeLimits (designWidth / 2, designHeight / 2, designWidth * 2, designHeight * 2);
+    if (auto* sizeLimits = getConstrainer())
+        sizeLimits->setFixedAspectRatio ((double) designWidth / (double) designHeight);
+    setSize (juce::roundToInt (designWidth * scale), juce::roundToInt (designHeight * scale));
+    rememberSize = true;
     startTimerHz (30);
 }
 
@@ -117,7 +127,7 @@ void AlignMyTimeEditor::showSettings (ui::SettingsPanel::Section section)
     settings = std::make_unique<ui::SettingsPanel> (processor, std::move (languageChanged), std::move (closed));
     settings->showSection (section);
     addAndMakeVisible (*settings);
-    settings->setBounds (getLocalBounds());
+    placeOverlay (*settings);
     settings->grabKeyboardFocus();
 }
 
@@ -135,7 +145,7 @@ void AlignMyTimeEditor::showManual (const juce::String& chapterId)
     if (chapterId.isNotEmpty())
         manual->showChapter (chapterId);
     addAndMakeVisible (*manual);
-    manual->setBounds (getLocalBounds());
+    placeOverlay (*manual);
     manual->grabKeyboardFocus();
 }
 
@@ -164,6 +174,15 @@ void AlignMyTimeEditor::exportResult()
     processor.getSession().setStep (Step::render);
     showStep (Step::render);
     renderPage->exportResult();
+}
+
+void AlignMyTimeEditor::exportTempoMap()
+{
+    closeOverlay();
+    processor.stopPreview();
+    processor.getSession().setStep (Step::render);
+    showStep (Step::render);
+    renderPage->exportTempoMap();
 }
 
 void AlignMyTimeEditor::zoomReview (int direction)
@@ -197,16 +216,39 @@ void AlignMyTimeEditor::paintOverChildren (juce::Graphics& g)
 
 void AlignMyTimeEditor::resized()
 {
-    auto area = getLocalBounds();
+    // Everything is laid out at the design size, then scaled (and centred if the proportions differ).
+    uiScale = juce::jmax (0.1f, juce::jmin ((float) getWidth() / (float) designWidth, (float) getHeight() / (float) designHeight));
+    uiTransform = juce::AffineTransform::scale (uiScale)
+                      .translated (((float) getWidth() - (float) designWidth * uiScale) * 0.5f,
+                                   ((float) getHeight() - (float) designHeight * uiScale) * 0.5f);
+
+    juce::Rectangle<int> area (designWidth, designHeight);
     if (header != nullptr)
+    {
         header->setBounds (area.removeFromTop (56));
+        header->setTransform (uiTransform);
+    }
     for (auto* page : { (juce::Component*) tapPage.get(), (juce::Component*) reviewPage.get(), (juce::Component*) renderPage.get() })
+    {
         if (page != nullptr)
+        {
             page->setBounds (area);
+            page->setTransform (uiTransform);
+        }
+    }
     if (settings != nullptr)
-        settings->setBounds (getLocalBounds());
+        placeOverlay (*settings);
     if (manual != nullptr)
-        manual->setBounds (getLocalBounds());
+        placeOverlay (*manual);
+
+    if (rememberSize && getWidth() > 0)
+        appSettings().setValue (processor.isStandalone() ? "standaloneScale" : "editorScale", (double) getWidth() / designWidth);
+}
+
+void AlignMyTimeEditor::placeOverlay (juce::Component& overlay)
+{
+    overlay.setBounds (0, 0, designWidth, designHeight);
+    overlay.setTransform (uiTransform);
 }
 
 ui::Page* AlignMyTimeEditor::currentPage()

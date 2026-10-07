@@ -203,6 +203,17 @@ bool matchesTapKey (const juce::KeyPress& key)
            && key.getModifiers().isAltDown() == tapKey.getModifiers().isAltDown();
 }
 
+double getTapOffsetMs()
+{
+    return juce::jlimit (-150.0, 150.0, appSettings().getDoubleValue ("tapOffsetMs", 0.0));
+}
+
+void setTapOffsetMs (double milliseconds)
+{
+    appSettings().setValue ("tapOffsetMs", juce::jlimit (-150.0, 150.0, milliseconds));
+    appSettings().saveIfNeeded();
+}
+
 bool markerDragNeedsCtrl()
 {
     return appSettings().getBoolValue ("markerDragNeedsCtrl", true);

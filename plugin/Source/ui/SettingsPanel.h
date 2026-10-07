@@ -46,6 +46,9 @@ private:
     juce::TextButton customKey;
     bool capturingKey = false;
     ToggleRow dragNeedsCtrl { tr ("Marker nur mit gedrückter Strg-Taste verschieben") };
+    juce::Slider tapOffset { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
+    juce::TextButton applyMeasured;
+    void updateMeasuredOffset();
 
     // Audio & MIDI (standalone)
     std::unique_ptr<juce::Component> deviceSelector;
@@ -53,7 +56,7 @@ private:
 
     juce::TextButton close;
 
-    juce::Rectangle<int> navArea, content, languageLabel, tapKeyLabel, tapKeyHint, markerLabel, markerHint, audioHint;
+    juce::Rectangle<int> navArea, content, languageLabel, tapKeyLabel, tapKeyHint, markerLabel, markerHint, audioHint, offsetLabel, offsetHint;
 };
 
 } // namespace amt::plugin::ui

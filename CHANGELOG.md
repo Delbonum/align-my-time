@@ -3,6 +3,17 @@
 Versionen nach [Semantic Versioning](https://semver.org/lang/de/): **MAJOR.MINOR.PATCH**.
 PATCH = Fehlerbehebungen, MINOR = neue Funktionen, MAJOR = inkompatible Änderungen (z. B. gespeicherte Projekte).
 
+## 1.5.0 – 2026-10-07
+
+### Neu
+- **Tempo-Map exportieren (MIDI):** dritte Option unter „Ergebnis landet …“ (Standalone auch **Datei › Tempo-Map exportieren …**, `Strg+Shift+E`). Statt die Aufnahme anzupassen, folgt das Projekt ihr: Die MIDI-Datei enthält Tempo und Taktart der Aufnahme, jeder Marker liegt genau auf seinem Takt. Die Zeit vor dem ersten Marker wird zu ganzen Takten, bei Bedarf mit Auftakt in Sechzehnteln.
+- **Exportformat wählbar:** 16 bit (mit TPDF-Dither), 24 bit oder 32 bit float; Samplerate unverändert oder 44,1 / 48 / 88,2 / 96 kHz (beim Heruntersetzen mit Anti-Aliasing-Filter). Wird mit dem Projekt gespeichert.
+- **Tap-Ausgleich** unter Einstellungen › Bedienung (−100 bis +100 ms) für Taps, die regelmäßig zu spät oder zu früh kommen. Align My Time misst den Versatz aus den eingerasteten Taps des Projekts, **Übernehmen** stellt ihn ein. Gilt für alle Projekte (die bisher nie benutzte Projekteinstellung `tapOffsetMs` entfällt).
+- **Plugin-Fenster in der Größe veränderbar** (50 bis 200 %, Seitenverhältnis bleibt). Die Oberfläche skaliert als Ganzes; die Größe wird gemerkt, für Plugin und App getrennt.
+
+### Geändert
+- Die Anschläge (Transienten) einer neu geladenen Spur werden im Hintergrund erkannt, das Fenster bleibt dabei bedienbar („Anschläge werden erkannt …“ neben der Quelle). Marker rasten danach ein; ein Rendern wartet so lange.
+
 ## 1.4.0 – 2026-10-07
 
 ### Neu

@@ -26,6 +26,48 @@ double gridQuarters (const TempoMap& tempo, TapUnit unit, int firstBar, int inde
     return q;
 }
 
+TempoMap recordingTempoMap (const std::vector<Marker>& markers, const TempoMap& projectTempo, TapUnit unit, int firstBar)
+{
+    if (markers.size() < 2)
+        return projectTempo;
+
+    std::vector<double> seconds;
+    for (const auto& m : markers)
+        seconds.push_back (m.seconds);
+    std::sort (seconds.begin(), seconds.end());
+
+    std::vector<double> quarters;
+    for (size_t i = 0; i < seconds.size(); ++i)
+        quarters.push_back (gridQuarters (projectTempo, unit, firstBar, (int) i));
+
+    // Lead-in before the first marker at roughly the first tapped tempo, rounded to sixteenths.
+    const auto& firstSignature = projectTempo.signatureAt (quarters.front() + 1.0e-9);
+    const double firstQuartersPerSecond = (quarters[1] - quarters[0]) / std::max (1.0e-6, seconds[1] - seconds[0]);
+    double lead = std::round (std::max (0.0, seconds.front()) * firstQuartersPerSecond * 4.0) / 4.0;
+    if (lead < 0.25 && seconds.front() > 0.001)
+        lead = 0.25;
+
+    const double barLength = firstSignature.quartersPerBar();
+    const double pickup = lead - std::floor (lead / barLength + 1.0e-9) * barLength;
+    const double shift = quarters.front() - lead; // project quarters -> quarters of the new map
+
+    std::vector<TempoPoint> points;
+    if (lead > 0.0)
+        points.push_back ({ 0.0, 0.0 });
+    for (size_t i = 0; i < seconds.size(); ++i)
+        points.push_back ({ seconds[i], quarters[i] - shift });
+
+    std::vector<TimeSignature> signatures;
+    if (pickup > 1.0e-9)
+        signatures.push_back ({ 0.0, (int) std::lround (pickup * 4.0), 16 });
+    signatures.push_back ({ pickup > 1.0e-9 ? pickup : 0.0, firstSignature.numerator, firstSignature.denominator });
+    for (const auto& sig : projectTempo.signatures())
+        if (sig.quarters > quarters.front() + 1.0e-9 && sig.quarters <= quarters.back() + 1.0e-9)
+            signatures.push_back ({ sig.quarters - shift, sig.numerator, sig.denominator });
+
+    return TempoMap (std::move (points), std::move (signatures));
+}
+
 std::optional<TapUnit> suggestTapUnit (const AlignmentPlan& plan, const TempoMap& projectTempo, TapUnit current)
 {
     if (plan.targetSeconds.size() < 4 || plan.averageBpm <= 0.0)

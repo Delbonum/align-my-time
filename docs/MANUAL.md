@@ -11,7 +11,9 @@ The work happens in three steps, shown at the top centre of the window:
 
 1. **Tap:** Play the track and press a key on every downbeat (or every beat).
 2. **Review:** Check and correct the markers, choose the method, listen before and after.
-3. **Render:** Write the result as a WAV file or replace it directly in the track.
+3. **Render:** Write the result as a WAV file or replace it directly in the track. Or the other way round: the recording stays as it is, and you export its tempo as a **tempo map** (MIDI file) so the project follows it.
+
+The window can be resized freely, in the plug-in and in the app. The content scales along, and Align My Time remembers the size.
 
 Align My Time comes in two forms:
 
@@ -79,7 +81,8 @@ Under **I tap on …** choose **Every one**, **1 and 3** or **Every beat**. You 
 - A missed beat is no problem: just keep tapping. Gaps are filled in automatically (those markers are labelled "filled in automatically").
 - Double taps are detected and removed.
 - `Backspace` or **Delete last tap** takes back the last tap, **Delete all markers** starts over.
-- Every marker snaps to the nearest attack in the recording (up to 70 ms away) while "Snap to transients" is on.
+- Every marker snaps to the nearest attack in the recording (up to 70 ms away) while "Snap to transients" is on. Right after a file is loaded, Align My Time looks for the attacks in the background ("Detecting attacks …" next to the source); until then markers do not snap yet, afterwards automatically.
+- If your taps always come a little late (or early), the **tap compensation** under **Settings › Controls** evens that out (see "Settings").
 
 On the right under **Live** you see the tapped tempo, the target tempo, the fluctuation and how many markers are set.
 
@@ -132,14 +135,25 @@ At the top you see before and after on the project grid. The markers of the resu
 
 ![Render](screenshots/3-rendern.png)
 
+### Format
+
+Under **Format** choose **16 bit** (with dither), **24 bit** or **32 bit float** and the sample rate: **Unchanged** (as rendered, i.e. the project's or the audio output's rate) or 44.1, 48, 88.2 or 96 kHz. The setting is saved with the project.
+
+### Tempo map (MIDI)
+
+Instead of fitting the recording to the project, you can fit the project to the recording: **Tempo map (MIDI)** writes a MIDI file with the recording's tempo and time signature. Every marker sits exactly on its bar, with constant tempo between two markers. The file starts at the project start; the time before the first marker becomes whole bars, if needed with a short pick-up in sixteenths (e.g. 3/16).
+
+If you import the file into your DAW and take over its tempo track, bar grid, click and MIDI tracks follow the recording without changing the audio. How to take over the tempo track depends on the DAW (in Cubase e.g. via **File › Import › MIDI File** or the tempo track editor). The recording must sit at the same position as in Align My Time (a file: at the project start).
+
 ### Plug-in
 
 - **As a new track:** Align My Time writes a WAV file (24 bit) to the folder `Music/Align My Time`. Drag the tile on the right onto a new track. With **File from project start (bar 1)** the file starts at the beginning of the project, so you simply drop it at bar 1.
 - **Replace in this track:** the track plays the aligned version from now on. This is non-destructive: **Restore original** switches back. To make it permanent, use your DAW's function, e.g. "Render in Place" in Cubase.
+- **Tempo map (MIDI):** **Export tempo map** writes the MIDI file to `Music/Align My Time`. Drag the tile into the DAW or import the file.
 
 ### Standalone app
 
-**Export as file …** (or **File › Export result …**, `Ctrl+E`) asks where to save and writes a WAV file (24 bit). The **Track name** field suggests the file name.
+**Export as file …** (or **File › Export result …**, `Ctrl+E`) asks where to save and writes a WAV file in the chosen format. The **Track name** field suggests the file name. **File › Export tempo map …** (`Ctrl+Shift+E`) writes the tempo map as a MIDI file.
 
 **Listen** plays the result. If anything changes after rendering, the result says "outdated, please render again".
 
@@ -192,7 +206,8 @@ The file format is described in `docs/PROJEKTFORMAT.md`.
 Open the settings with the gear at the top right, in the standalone app also via **Edit › Settings …** (`Ctrl+,`). They apply to all projects and all plug-in instances.
 
 - **General:** language (Deutsch or English).
-- **Controls:** tap key (Space, Tab, T, Return, Ctrl+Space or a key of your own) and whether markers only move with Ctrl held.
+- **Controls:** tap key (Space, Tab, T, Return, Ctrl+Space or a key of your own), **tap compensation** and whether markers only move with Ctrl held.
+- **Tap compensation:** added to every new tap (−100 to +100 ms, double-click = 0). Negative if your taps come late, e.g. from reaction time or MIDI latency. If you tapped with "Snap to transients", Align My Time measures how far your taps were from the attacks on average; **Apply** sets the compensation to match. It applies to new taps, markers already set stay.
 - **Audio & MIDI** (standalone only): audio driver, output, sample rate, buffer size and the MIDI inputs for a foot switch or keyboard. No audio input is needed. **Edit › Audio and MIDI settings …** leads straight there.
 - **Credits:** version, developer and libraries used. **Help › Credits** leads straight there.
 
@@ -247,7 +262,7 @@ On the Mac use `Cmd` instead of `Ctrl`.
 | `Ctrl+N` / `Ctrl+O` | New project / open project |
 | `Ctrl+S` / `Ctrl+Shift+S` | Save / save as |
 | `Ctrl+I` / `Ctrl+Shift+I` | Load audio file / add more tracks |
-| `Ctrl+E` | Export result |
+| `Ctrl+E` / `Ctrl+Shift+E` | Export result / export tempo map |
 | `Ctrl+T` | Target tempo and time signature |
 | `Ctrl+,` | Settings |
 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Step Tap / Review / Render |
@@ -261,6 +276,7 @@ On the Mac use `Cmd` instead of `Ctrl`.
 - **"Waiting for the audio …" (ARA):** some DAWs release the audio only after a moment. Align My Time retries every second. If that does not help: **Reload track**.
 - **Insert mode: "No signal reached the plug-in during playback":** is the track muted, or is the plug-in behind a fader at zero? The plug-in needs the track's signal.
 - **The tapped tempo does not fit the project:** in "Review", change the grid at **1 marker =** or accept the suggestion at the top.
+- **The window is too big or too small:** drag its corner or edge. The content scales along; Align My Time remembers the size (plug-in and app separately).
 - **A bar sounds smeared after aligning:** check the marker (often a missed attack), turn on **Snap to transients** or try **Cut + move**.
 - **Several tracks sound phasey:** use **Cut + move**. All tracks must come from the same recording and start at the same time.
 - **Finding exported files:** in the plug-in under `Music/Align My Time` (button **Show in folder**). In the standalone app wherever you saved them.

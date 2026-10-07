@@ -15,38 +15,6 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(); // PluginProcessor.cpp
 namespace amt::plugin
 {
 
-/** Holds the editor at its design size and scales it with the window. */
-class ScaledContent : public juce::Component
-{
-public:
-    explicit ScaledContent (juce::AudioProcessorEditor& e) : editor (e)
-    {
-        designWidth = editor.getWidth();
-        designHeight = editor.getHeight();
-        addAndMakeVisible (editor);
-        setSize (designWidth, designHeight);
-    }
-
-    int getDesignWidth() const { return designWidth; }
-    int getDesignHeight() const { return designHeight; }
-
-    void resized() override
-    {
-        const float scale = juce::jmin ((float) getWidth() / (float) designWidth, (float) getHeight() / (float) designHeight);
-        const float x = ((float) getWidth() - (float) designWidth * scale) * 0.5f;
-        const float y = ((float) getHeight() - (float) designHeight * scale) * 0.5f;
-        editor.setBounds (0, 0, designWidth, designHeight);
-        editor.setTransform (juce::AffineTransform::scale (scale).translated (x, y));
-    }
-
-    void paint (juce::Graphics& g) override { g.fillAll (ui::colours::panel); }
-
-private:
-    juce::AudioProcessorEditor& editor;
-    int designWidth = 1120, designHeight = 720;
-};
-
-//==============================================================================
 class MainWindow : public juce::DocumentWindow
 {
 public:
@@ -61,7 +29,7 @@ public:
         editor.reset (processor.createEditorIfNeeded());
         if (auto* ed = dynamic_cast<AlignMyTimeEditor*> (editor.get()))
             ed->onProjectFileDropped = [this] (const juce::File& file) { openFile (file); };
-        content = std::make_unique<ScaledContent> (*editor);
+        const int startWidth = editor->getWidth(), startHeight = editor->getHeight();
 
         setUsingNativeTitleBar (true);
        #if JUCE_MAC
@@ -69,18 +37,18 @@ public:
        #else
         setMenuBar (controller.get());
        #endif
-        setContentNonOwned (content.get(), true);
+        setContentNonOwned (editor.get(), true);
         addKeyListener (controller->getCommandManager().getKeyMappings());
 
-        // Resizable; the content keeps its proportions. Small screens start scaled down.
-        const auto designWidth = content->getDesignWidth(), designHeight = content->getDesignHeight();
-        const int chromeHeight = getHeight() - designHeight;
+        // Resizable; the editor scales its content. The last size is kept, but never larger than the screen.
+        constexpr int designWidth = AlignMyTimeEditor::designWidth, designHeight = AlignMyTimeEditor::designHeight;
+        const int chromeHeight = getHeight() - startHeight;
         setResizable (true, false);
-        setResizeLimits (designWidth / 2, designHeight / 2 + chromeHeight, designWidth * 3, designHeight * 3 + chromeHeight);
+        setResizeLimits (designWidth / 2, designHeight / 2 + chromeHeight, designWidth * 2, designHeight * 2 + chromeHeight);
         if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
         {
             const auto area = display->userArea.reduced (20);
-            const float scale = juce::jmin (1.0f, (float) area.getWidth() / (float) designWidth,
+            const float scale = juce::jmin ((float) startWidth / (float) designWidth, (float) area.getWidth() / (float) designWidth,
                                             (float) (area.getHeight() - chromeHeight) / (float) designHeight);
             centreWithSize (juce::roundToInt ((float) designWidth * scale), juce::roundToInt ((float) designHeight * scale) + chromeHeight);
         }
@@ -101,7 +69,6 @@ public:
        #endif
         removeKeyListener (controller->getCommandManager().getKeyMappings());
         clearContentComponent();
-        content.reset();
         editor.reset();
         controller.reset();
         holder.reset();
@@ -140,7 +107,6 @@ private:
     std::unique_ptr<juce::StandalonePluginHolder> holder;
     std::unique_ptr<AppController> controller;
     std::unique_ptr<juce::AudioProcessorEditor> editor;
-    std::unique_ptr<ScaledContent> content;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };

@@ -11,7 +11,9 @@ Die Arbeit läuft in drei Schritten, die oben in der Mitte des Fensters stehen:
 
 1. **Tappen:** Die Spur abspielen und auf jede Eins (oder jede Zählzeit) eine Taste drücken.
 2. **Prüfen:** Marker kontrollieren und korrigieren, das Verfahren wählen, vorher und nachher anhören.
-3. **Rendern:** Das Ergebnis als WAV-Datei schreiben oder direkt in der Spur ersetzen.
+3. **Rendern:** Das Ergebnis als WAV-Datei schreiben oder direkt in der Spur ersetzen. Oder umgekehrt: Die Aufnahme bleibt, wie sie ist, und du exportierst ihr Tempo als **Tempo-Map** (MIDI-Datei), damit das Projekt ihr folgt.
+
+Das Fenster lässt sich im Plugin und in der App beliebig groß ziehen. Der Inhalt skaliert mit, die Größe merkt sich Align My Time.
 
 Align My Time gibt es in zwei Formen:
 
@@ -79,7 +81,8 @@ Bei **Ich tippe auf …** wählst du **Jede Eins**, **1 und 3** oder **Jede Zäh
 - Ein verpasster Schlag ist kein Problem: einfach weitertippen. Lücken werden automatisch ergänzt (die Marker sind dann als „automatisch ergänzt“ markiert).
 - Doppelte Taps werden erkannt und entfernt.
 - `Backspace` oder **Letzten Tap löschen** nimmt den letzten Tap zurück, **Alle Marker löschen** fängt neu an.
-- Jeder Marker rastet auf den nächsten Anschlag in der Aufnahme ein (bis 70 ms Abstand), wenn „An Transienten einrasten“ an ist.
+- Jeder Marker rastet auf den nächsten Anschlag in der Aufnahme ein (bis 70 ms Abstand), wenn „An Transienten einrasten“ an ist. Direkt nach dem Laden einer Datei sucht Align My Time die Anschläge im Hintergrund („Anschläge werden erkannt …“ neben der Quelle); bis dahin rasten Marker noch nicht ein, danach automatisch.
+- Kommen deine Taps immer etwas zu spät (oder zu früh), gleicht der **Tap-Ausgleich** unter **Einstellungen › Bedienung** das aus (siehe Kapitel „Einstellungen“).
 
 Rechts unter **Live** siehst du das getappte Tempo, das Ziel-Tempo, die Schwankung und wie viele Marker gesetzt sind.
 
@@ -132,14 +135,25 @@ Oben siehst du vorher und nachher auf dem Projektraster. Die Marker des Ergebnis
 
 ![Rendern](screenshots/3-rendern.png)
 
+### Format
+
+Unter **Format** wählst du **16 bit** (mit Dither), **24 bit** oder **32 bit float** und die Samplerate: **Unverändert** (so wie gerechnet, also die des Projekts bzw. der Audio-Ausgabe) oder 44,1, 48, 88,2 bzw. 96 kHz. Die Einstellung wird mit dem Projekt gespeichert.
+
+### Tempo-Map (MIDI)
+
+Statt die Aufnahme ans Projekt anzupassen, kannst du das Projekt an die Aufnahme anpassen: **Tempo-Map (MIDI)** schreibt eine MIDI-Datei mit dem Tempo und der Taktart der Aufnahme. Jeder Marker liegt darin genau auf seinem Takt, zwischen zwei Markern ist das Tempo konstant. Die Datei beginnt am Projektanfang; die Zeit vor dem ersten Marker wird zu ganzen Takten, bei Bedarf mit einem kurzen Auftakt in Sechzehnteln (z. B. 3/16).
+
+Importierst du die Datei in die DAW und übernimmst dabei ihre Tempospur, laufen Taktraster, Klick und MIDI-Spuren mit der Aufnahme mit, ohne dass das Audio verändert wird. Wie das Übernehmen der Tempospur geht, hängt von der DAW ab (in Cubase z. B. über **Datei › Importieren › MIDI-Datei** oder die Tempospur-Bearbeitung). Die Aufnahme muss dafür an derselben Stelle liegen wie in Align My Time (Datei: am Projektanfang).
+
 ### Plugin
 
 - **Als neue Spur:** Align My Time schreibt eine WAV-Datei (24 bit) in den Ordner `Musik/Align My Time`. Zieh die Kachel rechts auf eine neue Spur. Mit **Datei ab Projektanfang (Takt 1)** beginnt die Datei am Projektanfang, du legst sie also einfach an Takt 1.
 - **In dieser Spur ersetzen:** Die Spur spielt ab sofort die angepasste Version. Das ist nicht-destruktiv: **Original wiederherstellen** schaltet zurück. Zum Festschreiben nutzt du die Funktion deiner DAW, in Cubase z. B. „Render in Place“.
+- **Tempo-Map (MIDI):** **Tempo-Map exportieren** schreibt die MIDI-Datei nach `Musik/Align My Time`. Zieh die Kachel in die DAW oder importiere die Datei.
 
 ### Standalone-App
 
-**Als Datei exportieren …** (oder **Datei › Ergebnis exportieren …**, `Strg+E`) fragt nach dem Speicherort und schreibt eine WAV-Datei (24 bit). Den Dateinamen schlägt das Feld **Spurname** vor.
+**Als Datei exportieren …** (oder **Datei › Ergebnis exportieren …**, `Strg+E`) fragt nach dem Speicherort und schreibt eine WAV-Datei im gewählten Format. Den Dateinamen schlägt das Feld **Spurname** vor. **Datei › Tempo-Map exportieren …** (`Strg+Shift+E`) schreibt die Tempo-Map als MIDI-Datei.
 
 **Anhören** spielt das Ergebnis ab. Ändert sich nach dem Rendern noch etwas, steht beim Ergebnis „veraltet, bitte neu rendern“.
 
@@ -192,7 +206,8 @@ Das Dateiformat ist in `docs/PROJEKTFORMAT.md` beschrieben.
 Die Einstellungen öffnest du über das Zahnrad oben rechts, in der Standalone-App auch über **Bearbeiten › Einstellungen …** (`Strg+,`). Sie gelten für alle Projekte und alle Plugin-Instanzen.
 
 - **Allgemein:** Sprache (Deutsch oder English).
-- **Bedienung:** Tap-Taste (Leertaste, Tab, T, Eingabe, Strg+Leertaste oder eine eigene Taste) und ob Marker nur mit gedrückter Strg-Taste verschoben werden.
+- **Bedienung:** Tap-Taste (Leertaste, Tab, T, Eingabe, Strg+Leertaste oder eine eigene Taste), **Tap-Ausgleich** und ob Marker nur mit gedrückter Strg-Taste verschoben werden.
+- **Tap-Ausgleich:** Wird zu jedem neuen Tap addiert (−100 bis +100 ms, Doppelklick = 0). Negativ, wenn deine Taps zu spät kommen, z. B. wegen Reaktionszeit oder MIDI-Latenz. Hast du mit „An Transienten einrasten“ getappt, misst Align My Time, wie weit deine Taps im Schnitt neben den Anschlägen lagen; **Übernehmen** stellt den Ausgleich passend ein. Er gilt für neue Taps, schon gesetzte Marker bleiben.
 - **Audio & MIDI** (nur Standalone): Audiotreiber, Ausgang, Samplerate, Puffergröße und die MIDI-Eingänge für Fußschalter oder Keyboard. Ein Audioeingang wird nicht gebraucht. Direkt dorthin führt **Bearbeiten › Audio- und MIDI-Einstellungen …**.
 - **Credits:** Version, Entwickler und verwendete Bibliotheken. Direkt dorthin führt **Hilfe › Credits**.
 
@@ -247,7 +262,7 @@ Auf dem Mac gilt `Cmd` statt `Strg`.
 | `Strg+N` / `Strg+O` | Neues Projekt / Projekt öffnen |
 | `Strg+S` / `Strg+Shift+S` | Speichern / Speichern unter |
 | `Strg+I` / `Strg+Shift+I` | Audiodatei laden / Weitere Spuren hinzufügen |
-| `Strg+E` | Ergebnis exportieren |
+| `Strg+E` / `Strg+Shift+E` | Ergebnis exportieren / Tempo-Map exportieren |
 | `Strg+T` | Ziel-Tempo und Taktart |
 | `Strg+,` | Einstellungen |
 | `Strg+1` / `Strg+2` / `Strg+3` | Schritt Tappen / Prüfen / Rendern |
@@ -261,6 +276,7 @@ Auf dem Mac gilt `Cmd` statt `Strg`.
 - **„Warte auf die Audiodaten …“ (ARA):** Manche DAWs geben das Audio erst nach einem Moment frei. Align My Time versucht es jede Sekunde erneut. Hilft das nicht: **Spur neu laden**.
 - **Insert-Modus: „Beim Abspielen kam am Plugin kein Signal an“:** Ist die Spur stummgeschaltet oder steht das Plugin hinter einem Fader auf null? Das Plugin muss das Signal der Spur bekommen.
 - **Das getappte Tempo passt nicht zum Projekt:** In „Prüfen“ das Raster bei **1 Marker =** ändern oder den Vorschlag oben übernehmen.
+- **Das Fenster ist zu groß oder zu klein:** An der Ecke oder am Rand ziehen. Der Inhalt skaliert mit; Align My Time merkt sich die Größe (Plugin und App getrennt).
 - **Ein Takt klingt nach dem Anpassen verschmiert:** Den Marker prüfen (oft ein verpasster Anschlag), **An Transienten einrasten** einschalten oder **Schneiden + Verschieben** probieren.
 - **Mehrere Spuren klingen phasig:** **Schneiden + Verschieben** verwenden. Alle Spuren müssen von derselben Aufnahme stammen und zur selben Zeit beginnen.
 - **Exportierte Dateien finden:** Im Plugin unter `Musik/Align My Time` (Button **Im Ordner zeigen**). In der Standalone-App dort, wo du sie gespeichert hast.

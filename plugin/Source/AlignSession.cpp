@@ -72,6 +72,7 @@ AlignSession::~AlignSession()
 {
     *alive = false;
     renderJob.reset();
+    analysisPool.removeAllJobs (true, 30000);
 }
 
 void AlignSession::reset()
@@ -81,6 +82,9 @@ void AlignSession::reset()
     extraTracks.clear();
     source = nullptr;
     detector = nullptr;
+    ++analysisRun;
+    analysisPool.removeAllJobs (true, 0);
+    analysing = renderAfterAnalysis = false;
     sourceDescription.clear();
 
     markers.clear();
@@ -173,17 +177,72 @@ void AlignSession::rebuildSource()
         source = std::move (sum);
     }
 
-    detector = hasSource() ? std::make_unique<OnsetDetector> (*source) : nullptr;
-
-    // Re-snap restored or earlier markers against the new audio.
-    if (detector != nullptr && settings.snapToAttacks)
-        snapMarkersToAttacks (markers, *detector);
-    fixedMarkers = markers;
+    // Finding the attacks of a whole song takes a moment: on a background thread, so the window
+    // stays responsive. A newer source makes older results obsolete (analysisRun).
+    detector = nullptr;
+    const int run = ++analysisRun;
+    analysisPool.removeAllJobs (true, 0);
+    analysing = hasSource();
+    if (analysing)
+    {
+        std::weak_ptr<bool> weakAlive = alive;
+        analysisPool.addJob (std::function<juce::ThreadPoolJob::JobStatus()> ([this, clip = source, run, weakAlive] {
+            auto result = std::make_shared<OnsetDetector> (*clip);
+            juce::MessageManager::callAsync ([this, result, run, weakAlive] {
+                if (auto a = weakAlive.lock(); a != nullptr && *a)
+                    finishAnalysis (result, run);
+            });
+            return juce::ThreadPoolJob::jobHasFinished;
+        }));
+    }
 
     markChanged();
 
     if (restoredReplaceActive && canAlign())
         startRender();
+}
+
+void AlignSession::finishAnalysis (std::shared_ptr<OnsetDetector> result, int run)
+{
+    if (run != analysisRun)
+        return;
+
+    detector = std::move (result);
+    analysing = false;
+
+    // Re-snap restored or earlier markers against the new audio.
+    if (settings.snapToAttacks)
+        snapMarkersToAttacks (markers, *detector);
+    fixedMarkers = markers;
+    markChanged();
+
+    if (renderAfterAnalysis)
+    {
+        renderAfterAnalysis = false;
+        startRender();
+    }
+}
+
+TempoMap AlignSession::getRecordingTempoMap() const
+{
+    return recordingTempoMap (straightenedMarkers, projectTempo, settings.tapUnit, plan.firstBar);
+}
+
+std::optional<double> AlignSession::getMeasuredTapOffset() const
+{
+    double sum = 0.0;
+    int count = 0;
+    for (const auto& m : markers)
+    {
+        if (m.origin == MarkerOrigin::tapped && m.snappedToAttack)
+        {
+            sum += m.seconds - m.tappedSeconds;
+            ++count;
+        }
+    }
+    if (count < 4)
+        return std::nullopt;
+    return sum / count;
 }
 
 namespace
@@ -252,7 +311,7 @@ void AlignSession::beginTapping (double fromSeconds)
 void AlignSession::addTap (double songSeconds)
 {
     recordUndo ("tap" + juce::String (tapPass));
-    liveTaps.push_back (songSeconds + settings.tapOffsetMs / 1000.0);
+    liveTaps.push_back (songSeconds + getTapOffsetMs() / 1000.0);
     rebuildMarkers();
 }
 
@@ -577,6 +636,14 @@ void AlignSession::startRender()
 
     cancelRender();
 
+    // The attacks protect transients while stretching: wait for them.
+    if (analysing)
+    {
+        renderAfterAnalysis = true;
+        sendChangeMessage();
+        return;
+    }
+
     RenderJob::Input input { {}, defaultRenderRange (*source, plan.warp), plan.warp, settings, {} };
     std::vector<AlignedTrack> tracks;
     if (ownTrack != nullptr && ! ownTrack->isEmpty())
@@ -619,6 +686,7 @@ void AlignSession::startRender()
 void AlignSession::cancelRender()
 {
     renderJob.reset();
+    renderAfterAnalysis = false;
     sendChangeMessage();
 }
 
@@ -676,7 +744,7 @@ namespace ids
     static const juce::Identifier root ("AlignMyTime"), markers ("Markers"), marker ("Marker"), seconds ("seconds"),
         tapped ("tapped"), origin ("origin"), snapped ("snapped"), tapMode ("tapMode"), tapUnit ("tapUnit"), manualTempo ("manualTempo"), manualBpm ("manualBpm"),
         manualNumerator ("manualNumerator"), manualDenominator ("manualDenominator"), clickBlend ("clickBlend"), method ("method"), quality ("quality"),
-        crossfade ("crossfadeMs"), snap ("snapToAttacks"), straighten ("straighten"), leadIn ("leadIn"), click ("clickInPreview"), tapOffset ("tapOffsetMs"),
+        crossfade ("crossfadeMs"), snap ("snapToAttacks"), straighten ("straighten"), leadIn ("leadIn"), click ("clickInPreview"), exportBits ("exportBits"), exportRate ("exportSampleRate"),
         destination ("destination"), fromStart ("exportFromProjectStart"), firstBar ("firstBar"),
         trackName ("trackName"), step ("step"), replace ("replaceActive"), version ("version"),
         extraTracks ("ExtraTracks"), extraTrack ("ExtraTrack"), kind ("kind"), id ("id"), name ("name");
@@ -699,7 +767,8 @@ juce::ValueTree AlignSession::toValueTree() const
     tree.setProperty (ids::straighten, settings.straighten, nullptr);
     tree.setProperty (ids::leadIn, settings.leadIn, nullptr);
     tree.setProperty (ids::click, settings.clickInPreview, nullptr);
-    tree.setProperty (ids::tapOffset, settings.tapOffsetMs, nullptr);
+    tree.setProperty (ids::exportBits, settings.exportBits, nullptr);
+    tree.setProperty (ids::exportRate, settings.exportSampleRate, nullptr);
     tree.setProperty (ids::destination, (int) settings.destination, nullptr);
     tree.setProperty (ids::fromStart, settings.exportFromProjectStart, nullptr);
     tree.setProperty (ids::firstBar, settings.firstBar.has_value() ? *settings.firstBar : -100000, nullptr);
@@ -753,8 +822,9 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
     settings.straighten = juce::jlimit (0.0, 1.0, (double) tree.getProperty (ids::straighten, 0.0));
     settings.leadIn = tree.getProperty (ids::leadIn, true);
     settings.clickInPreview = tree.getProperty (ids::click, true);
-    settings.tapOffsetMs = tree.getProperty (ids::tapOffset, 0.0);
-    settings.destination = (Destination) (int) tree.getProperty (ids::destination, 0);
+    settings.exportBits = juce::jlimit (16, 32, (int) tree.getProperty (ids::exportBits, 24));
+    settings.exportSampleRate = juce::jmax (0.0, (double) tree.getProperty (ids::exportRate, 0.0));
+    settings.destination = (Destination) juce::jlimit (0, 2, (int) tree.getProperty (ids::destination, 0));
     settings.exportFromProjectStart = tree.getProperty (ids::fromStart, true);
     const int firstBar = tree.getProperty (ids::firstBar, -100000);
     settings.firstBar = firstBar > -100000 ? std::optional<int> (firstBar) : std::nullopt;

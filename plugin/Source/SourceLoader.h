@@ -11,7 +11,7 @@
 namespace amt::plugin
 {
 
-/** Brings `buffer` from `fromRate` to `toRate` (no-op if they match). */
+/** Brings `buffer` from `fromRate` to `toRate` (no-op if they match), low-pass filtered when going down. */
 void resampleInPlace (juce::AudioBuffer<float>& buffer, double fromRate, double toRate);
 
 /** Copies `buffer` into a clip at `startSample`, with exactly `numChannels` channels

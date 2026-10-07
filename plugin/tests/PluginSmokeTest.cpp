@@ -4,6 +4,7 @@
 //
 // Usage: AlignMyTimeSmokeTest [screenshot-folder]
 
+#include "Exporter.h"
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "ProjectFile.h"
@@ -96,6 +97,13 @@ void pumpMessages (int ms)
     juce::MessageManager::getInstance()->runDispatchLoopUntil (ms);
 }
 
+/** Attacks are detected on a background thread after every source change. */
+void waitForAnalysis (const AlignSession& session)
+{
+    for (int i = 0; i < 400 && session.isAnalysing(); ++i)
+        pumpMessages (25);
+}
+
 void saveSnapshot (juce::Component& c, const juce::File& file)
 {
     const auto image = c.createComponentSnapshot (c.getLocalBounds(), true, 1.0f);
@@ -181,6 +189,7 @@ int main (int argc, char** argv)
     playRange (7.0, (double) take.left.size() / rate);
 
     auto& session = processor->getSession();
+    waitForAnalysis (session);
     check (session.hasSource(), "track was recorded from the input");
     std::printf ("  merged source: start %lld, %lld samples (take %zu)\n", (long long) session.getSource()->startSample,
                  (long long) session.getSource()->numSamples(), take.left.size());
@@ -369,6 +378,7 @@ int main (int argc, char** argv)
         for (int i = 0; i < 100 && ! standalone->getSession().hasSource(); ++i)
             pumpMessages (50);
         auto& s = standalone->getSession();
+        waitForAnalysis (s);
         check (s.hasSource() && standalone->isUsingAudioFile(), "audio file loaded");
         check (s.hasSource() && std::abs ((double) s.getSource()->numSamples() - (double) take.left.size()) < rate * 0.01,
                "file resampled from 44.1 to 48 kHz");
@@ -489,6 +499,7 @@ int main (int argc, char** argv)
         auto waitForTracks = [&] (AlignMyTimeProcessor& p, int count) {
             for (int i = 0; i < 200 && p.getSession().getNumTracks() < count; ++i)
                 pumpMessages (50);
+            waitForAnalysis (p.getSession());
         };
 
         auto multi = makeStandalone();
@@ -553,6 +564,9 @@ int main (int argc, char** argv)
 
         multi->removeExtraTrack (ExtraTrack::Kind::file, overheads.getFullPathName());
         check (s.getNumTracks() == 1 && s.getSource() == s.getOwnTrack(), "removing the extra track leaves the own track alone");
+        check (s.isAnalysing(), "attacks of the new source are detected in the background");
+        waitForAnalysis (s);
+        check (! s.isAnalysing(), "... and the analysis finishes");
 
         std::printf ("12. Even out sloppy taps\n");
         s.setStep (Step::tap);
@@ -677,6 +691,7 @@ int main (int argc, char** argv)
         for (int i = 0; i < 100 && ! app->getSession().hasSource(); ++i)
             pumpMessages (50);
         auto& s = app->getSession();
+        waitForAnalysis (s);
         s.updateSettings ([] (SessionSettings& st) { st.manualBpm = 100.0; st.manualNumerator = 3; });
         s.beginTapping (0.0);
         for (auto d : take.downbeats)
@@ -740,7 +755,94 @@ int main (int argc, char** argv)
         moved.deleteRecursively();
     }
 
-    std::printf ("15. Manual\n");
+    std::printf ("15. Tempo map, export format, tap compensation, window size\n");
+    {
+        auto& s = restored->getSession();
+        s.setStep (Step::tap);
+        s.setSnapToAttacks (true);
+        s.updateSettings ([] (SessionSettings& st) { st.tapUnit = TapUnit::bar; st.straighten = 0.0; st.firstBar.reset(); });
+        s.beginTapping (0.0);
+        for (auto d : take.downbeats)
+            s.addTap (d + 0.02); // 20 ms late each time
+        s.setStep (Step::review);
+
+        // Tempo map: every marker on a bar line at its own time, written as a MIDI file.
+        const auto map = s.getRecordingTempoMap();
+        const auto& markers = s.getMarkers();
+        double worst = 0.0;
+        const double firstBar = std::round (map.quartersToBars (map.secondsToQuarters (markers[0].seconds)));
+        for (size_t i = 0; i < markers.size(); ++i)
+            worst = juce::jmax (worst, std::abs (map.quartersToBars (map.secondsToQuarters (markers[i].seconds)) - (firstBar + (double) i)));
+        check (worst < 1.0e-9 && std::abs (map.secondsToQuarters (0.0)) < 1.0e-9, "tempo map: every marker on its bar line, starting at 0");
+
+        const auto midiFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("amt-smoke-tempo.mid");
+        juce::String error;
+        check (Exporter::writeTempoMap (map, s.getSource()->endSeconds(), midiFile, error), "tempo map written as MIDI file");
+        {
+            juce::FileInputStream in (midiFile);
+            juce::MidiFile midiData;
+            check (midiData.readFrom (in) && midiData.getNumTracks() == 1, "MIDI file can be read back");
+            juce::MidiMessageSequence tempos, signatures;
+            midiData.findAllTempoEvents (tempos);
+            midiData.findAllTimeSigEvents (signatures);
+            midiData.convertTimestampTicksToSeconds();
+            const auto* track = midiData.getTrack (0);
+            int tempoEvents = 0;
+            double lastTempoTime = 0.0;
+            for (const auto* e : *track)
+                if (e->message.isTempoMetaEvent())
+                {
+                    ++tempoEvents;
+                    lastTempoTime = e->message.getTimeStamp();
+                }
+            std::printf ("  %d tempo events, last at %.4f s (last marker %.4f s)\n", tempoEvents, lastTempoTime, markers[markers.size() - 2].seconds);
+            check (tempos.getNumEvents() >= (int) markers.size() - 1 && signatures.getNumEvents() >= 1, "tempo and time signature events");
+            check (std::abs (lastTempoTime - markers[markers.size() - 2].seconds) < 0.002, "MIDI tempo changes sit at the markers' times");
+        }
+        midiFile.deleteFile();
+
+        // Measured tap offset and compensation
+        const auto measured = s.getMeasuredTapOffset();
+        std::printf ("  measured tap offset: %.1f ms\n", measured.has_value() ? *measured * 1000.0 : 0.0);
+        check (measured.has_value() && std::abs (*measured + 0.02) < 0.004, "taps 20 ms late are measured as -20 ms");
+        setTapOffsetMs (-20.0);
+        s.setStep (Step::tap);
+        s.setSnapToAttacks (false);
+        s.beginTapping (0.0);
+        s.addTap (5.0);
+        check (std::abs (s.getMarkers().back().tappedSeconds - 4.98) < 1.0e-9, "tap compensation shifts every new tap");
+        setTapOffsetMs (0.0);
+        s.undo();
+
+        // Export format: 16 bit, 44.1 kHz from a 48 kHz clip
+        AudioClip clip (2, (int64_t) rate, rate, 0);
+        for (int64_t i = 0; i < clip.numSamples(); ++i)
+            clip.channels[0][(size_t) i] = clip.channels[1][(size_t) i] = 0.5f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 440.0 * (double) i / rate);
+        const auto wavFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("amt-smoke-format.wav");
+        check (Exporter::writeWav (clip, wavFile, false, { 16, 44100.0 }, error), "WAV written as 16 bit / 44.1 kHz");
+        {
+            std::unique_ptr<juce::AudioFormatReader> reader (juce::WavAudioFormat().createReaderFor (new juce::FileInputStream (wavFile), true));
+            check (reader != nullptr && reader->bitsPerSample == 16 && juce::approximatelyEqual (reader->sampleRate, 44100.0)
+                       && std::abs ((double) reader->lengthInSamples - 44100.0) < 2.0,
+                   "file has the chosen format and the converted length");
+        }
+        wavFile.deleteFile();
+
+        // Resizable window: the UI scales as a whole.
+        std::unique_ptr<juce::AudioProcessorEditor> ed (restored->createEditor());
+        auto* scaled = dynamic_cast<AlignMyTimeEditor*> (ed.get());
+        ed->setSize (1680, 1080);
+        juce::Component* header = nullptr;
+        for (auto* child : ed->getChildren())
+            if (dynamic_cast<ui::Header*> (child) != nullptr)
+                header = child;
+        check (std::abs (scaled->getUiScale() - 1.5f) < 1.0e-4f && ed->getLocalArea (header, header->getLocalBounds()).getWidth() == 1680,
+               "editor at 150 %: everything scaled by 1.5");
+        check (std::abs (appSettings().getDoubleValue ("editorScale") - 1.5) < 1.0e-6, "the size is remembered");
+        ed->setSize (1120, 720);
+    }
+
+    std::printf ("16. Manual\n");
     {
         auto chapterIds = [] (Language language) {
             setLanguage (language);

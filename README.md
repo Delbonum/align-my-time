@@ -4,7 +4,7 @@ Ein DAW-Plugin (VST3 / AU, mit ARA 2) und eine Standalone-App, die eine frei ein
 
 1. **Tappen:** Die ganze Spur einmal anhören und im Takt eine Taste drücken (Leertaste oder eine andere Tap-Taste, Mausklick oder MIDI-Fußschalter), auf jede Eins oder auf jede Zählzeit.
 2. **Prüfen:** Marker kontrollieren und verschieben. Die Tempokurve zeigt Ausreißer, „Unsaubere Taps begradigen“ gleicht sie auf Wunsch aus. Hier wählst du Time-Stretch oder Schneiden + Verschieben und hörst vorher/nachher an.
-3. **Rendern:** Ergebnis als neue Spur (WAV per Drag & Drop) oder direkt in der Spur ersetzen (nicht-destruktiv).
+3. **Rendern:** Ergebnis als neue Spur (WAV per Drag & Drop, 16/24/32 bit, Samplerate wählbar) oder direkt in der Spur ersetzen (nicht-destruktiv). Oder umgekehrt: das Tempo der Aufnahme als **Tempo-Map** (MIDI-Datei) exportieren, damit das Projekt der Aufnahme folgt.
 
 | 1 · Tappen | 2 · Prüfen | 3 · Rendern |
 |---|---|---|

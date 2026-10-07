@@ -62,8 +62,8 @@ Derselbe Zustand, den das Plugin im DAW-Projekt speichert (`AlignSession::toValu
 | `snapToAttacks` | Marker rasten auf Anschläge ein (0/1). |
 | `straighten` | „Unsaubere Taps begradigen“, 0 bis 1. |
 | `clickBlend`, `clickInPreview`, `leadIn` | Vorhören: Mix Spur/Klick, Klick an, Vorlauf. |
-| `tapOffsetMs` | Wird zu jedem Tap addiert (Latenzausgleich, derzeit immer 0). |
-| `destination`, `exportFromProjectStart`, `trackName` | Rendern: Ziel (0 = Datei, 1 = in der Spur ersetzen; im Standalone immer Datei), Datei ab Projektanfang, Spurname. |
+| `destination`, `exportFromProjectStart`, `trackName` | Rendern: Ziel (0 = Datei, 1 = in der Spur ersetzen, 2 = Tempo-Map als MIDI-Datei; im Standalone nie 1), Datei ab Projektanfang, Spurname. |
+| `exportBits`, `exportSampleRate` | Format der WAV-Datei: 16, 24 oder 32 (float) bit; Samplerate in Hz, `0` = unverändert. |
 | `step` | Angezeigter Schritt: 0 = Tappen, 1 = Prüfen, 2 = Rendern. |
 | `replaceActive` | Nur Plugin: „In dieser Spur ersetzen“ aktiv. |
 

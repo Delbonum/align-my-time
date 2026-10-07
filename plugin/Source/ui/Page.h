@@ -90,6 +90,8 @@ public:
             if (extra > 0)
                 text = description + " + " + juce::String (extra) + (extra == 1 ? tr (" weitere Spur") : tr (" weitere Spuren"))
                        + tr (" (Summe)");
+            if (session.isAnalysing())
+                text << utf8 (" · ") << tr ("Anschläge werden erkannt …");
         }
         else if (processor.isStandalone())
             text = tr ("Lade eine Audiodatei – Button rechts oder einfach ins Fenster ziehen.");

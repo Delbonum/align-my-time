@@ -342,6 +342,41 @@ void testPlan()
     CHECK_NEAR (forced.targetSeconds[0], 8.0, 1e-9);
 }
 
+void testRecordingTempoMap()
+{
+    // A recording drifting around 120 BPM; the exported map must put every marker on its bar line
+    // at its original time, and start at second 0 like a MIDI file.
+    for (const double start : { 1.03, 2.0 })
+    {
+        std::vector<amt::Marker> markers;
+        double t = start;
+        for (int i = 0; i < 9; ++i)
+        {
+            markers.push_back ({ t, t, amt::MarkerOrigin::tapped, true });
+            t += 2.0 + 0.1 * std::sin (i * 0.9);
+        }
+        const auto project = amt::TempoMap::constant (120.0, 4, 4);
+        const auto plan = amt::planAlignment (markers, project, amt::TapUnit::bar);
+        const auto map = amt::recordingTempoMap (markers, project, amt::TapUnit::bar, plan.firstBar);
+
+        CHECK_NEAR (map.secondsToQuarters (0.0), 0.0, 1e-9);
+        const double firstBar = map.quartersToBars (map.secondsToQuarters (markers[0].seconds));
+        CHECK_NEAR (firstBar, std::round (firstBar), 1e-9);
+        for (size_t i = 0; i < markers.size(); ++i)
+            CHECK_NEAR (map.quartersToBars (map.secondsToQuarters (markers[i].seconds)), firstBar + (double) i, 1e-9);
+        CHECK_NEAR (map.bpmAt (0.5 * (markers[2].seconds + markers[3].seconds)), 240.0 / (markers[3].seconds - markers[2].seconds), 1e-6);
+        CHECK (map.signatures().back().numerator == 4 && map.signatures().back().denominator == 4);
+    }
+
+    // 1.03 s before the first downbeat at ~120 BPM: two quarters as an 8/16 pick-up bar.
+    {
+        std::vector<amt::Marker> markers { { 1.03, 1.03 }, { 3.03, 3.03 }, { 5.03, 5.03 } };
+        const auto map = amt::recordingTempoMap (markers, amt::TempoMap::constant (120.0), amt::TapUnit::bar, 1);
+        CHECK (map.signatures().size() == 2 && map.signatures()[0].numerator == 8 && map.signatures()[0].denominator == 16);
+        CHECK_NEAR (map.secondsToQuarters (1.03), 2.0, 1e-9);
+    }
+}
+
 /** After alignment every beat of the take must sit on the 120 BPM grid. */
 void checkAlignedToGrid (const amt::AudioClip& rendered, const DriftingTake& take, const amt::AlignmentPlan& plan, double tolerance, const char* what)
 {
@@ -453,6 +488,7 @@ int main()
         { "straighten onto attacks", testStraightenOntoAttacks },
         { "onset snapping", testOnsetSnapping },
         { "alignment plan", testPlan },
+        { "recording tempo map", testRecordingTempoMap },
         { "time-stretch alignment", testTimeStretchAlignment },
         { "slice alignment", testSliceAlignment },
         { "slices are transparent", testSlicesAreTransparentWithoutTempoChange },

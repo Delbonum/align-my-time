@@ -59,16 +59,31 @@ RenderPage::RenderPage (AlignMyTimeProcessor& p) : Page (p), dragTile (std::make
 
     newTrackCard.onClick = [this] { session.updateSettings ([] (SessionSettings& s) { s.destination = Destination::newTrack; }); };
     replaceCard.onClick = [this] { session.updateSettings ([] (SessionSettings& s) { s.destination = Destination::replaceInTrack; }); };
+    tempoMapCard.onClick = [this] { session.updateSettings ([] (SessionSettings& s) { s.destination = Destination::tempoMap; }); };
+    tempoMapCard.getProperties().set ("icon", "link");
     addAndMakeVisible (newTrackCard);
     addAndMakeVisible (replaceCard);
+    addAndMakeVisible (tempoMapCard);
 
     // Standalone: there is no track to replace or drag into; the result is simply a file.
     if (processor.isStandalone())
     {
-        newTrackCard.setText (tr ("Als Datei speichern"), tr ("Schreibt eine WAV-Datei (24 bit). Wohin, fragt die App beim Exportieren."));
+        newTrackCard.setText (tr ("Als Datei speichern"), tr ("Schreibt eine WAV-Datei. Wohin, fragt die App beim Exportieren."));
         replaceCard.setVisible (false);
         dragTile->savedOnly = true;
     }
+
+    bitDepth.onChange = [this] (int i) { session.updateSettings ([i] (SessionSettings& s) { s.exportBits = i == 0 ? 16 : i == 1 ? 24 : 32; }); };
+    addAndMakeVisible (bitDepth);
+    sampleRate.addItem ("-", 1);
+    for (const double rate : { 44100.0, 48000.0, 88200.0, 96000.0 })
+        sampleRate.addItem (formatNumber (rate / 1000.0, 1) + " kHz", (int) rate);
+    sampleRate.setTitle (tr ("Samplerate"));
+    sampleRate.onChange = [this] {
+        const int id = sampleRate.getSelectedId();
+        session.updateSettings ([id] (SessionSettings& s) { s.exportSampleRate = id > 1 ? (double) id : 0.0; });
+    };
+    addAndMakeVisible (sampleRate);
 
     trackName.setFont (uiFont (13.5f));
     trackName.setIndents (12, 10);
@@ -134,7 +149,14 @@ std::vector<double> RenderPage::projectBarLines (double start, double end) const
 
 Destination RenderPage::destination() const
 {
-    return processor.isStandalone() ? Destination::newTrack : session.getSettings().destination;
+    const auto chosen = session.getSettings().destination;
+    return processor.isStandalone() && chosen == Destination::replaceInTrack ? Destination::newTrack : chosen;
+}
+
+ExportFormat RenderPage::exportFormat() const
+{
+    const auto& settings = session.getSettings();
+    return { settings.exportBits, settings.exportSampleRate };
 }
 
 void RenderPage::resized()
@@ -156,14 +178,27 @@ void RenderPage::resized()
     leftArea = area;
 
     auto left = leftArea.withTrimmedTop (22);
-    auto cards = left.removeFromTop (104);
-    newTrackCard.setBounds (replaceCard.isVisible() ? cards.removeFromLeft (cards.getWidth() / 2 - 6) : cards);
-    cards.removeFromLeft (12);
-    replaceCard.setBounds (cards);
-    left.removeFromTop (12);
-    auto nameRow = left.removeFromTop (38);
+    auto cards = left.removeFromTop (116);
+    std::vector<ChoiceCard*> visibleCards;
+    for (auto* card : { &newTrackCard, &replaceCard, &tempoMapCard })
+        if (card->isVisible())
+            visibleCards.push_back (card);
+    const int cardWidth = (cards.getWidth() - 12 * ((int) visibleCards.size() - 1)) / (int) visibleCards.size();
+    for (auto* card : visibleCards)
+    {
+        card->setBounds (cards.removeFromLeft (cardWidth));
+        cards.removeFromLeft (12);
+    }
+    left.removeFromTop (10);
+    auto nameRow = left.removeFromTop (36);
     nameLabel = nameRow.removeFromLeft (80);
     trackName.setBounds (nameRow);
+    left.removeFromTop (8);
+    auto formatRow = left.removeFromTop (34);
+    formatLabel = formatRow.removeFromLeft (80);
+    sampleRate.setBounds (formatRow.removeFromRight (180).reduced (0, 2));
+    formatRow.removeFromRight (12);
+    bitDepth.setBounds (formatRow);
 
     auto right = rightArea.withTrimmedTop (22);
     fromProjectStart.setBounds (right.removeFromTop (32));
@@ -206,6 +241,7 @@ void RenderPage::paint (juce::Graphics& g)
     g.setColour (colours::muted);
     g.setFont (uiFont (12.5f));
     g.drawText (tr ("Spurname"), nameLabel, juce::Justification::centredLeft);
+    g.drawText (tr ("Format"), formatLabel, juce::Justification::centredLeft);
 
     if (errorText.isNotEmpty())
     {
@@ -234,10 +270,15 @@ void RenderPage::paint (juce::Graphics& g)
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
         const int numTracks = session.getNumTracks();
-        g.drawText (formatNumber (clip->sampleRate / 1000.0, 1) + utf8 (" kHz · 24 bit · ")
-                        + juce::String (clip->numChannels() == 1 ? "Mono" : "Stereo") /* same in both languages */
-                        + (numTracks > 1 ? utf8 (" · ") + juce::String (numTracks) + tr (" Spuren") : juce::String()),
-                    footer.reduced (24, 0).withTrimmedRight (270), juce::Justification::centredRight);
+        const auto format = exportFormat();
+        const double rate = format.sampleRate > 0.0 ? format.sampleRate : clip->sampleRate;
+        const auto description = destination() == Destination::tempoMap
+                                     ? tr ("MIDI-Datei · Tempo und Taktart ab Projektanfang")
+                                     : formatNumber (rate / 1000.0, 1) + utf8 (" kHz · ") + juce::String (format.bitsPerSample)
+                                           + (format.bitsPerSample >= 32 ? " bit float" : " bit") + utf8 (" · ")
+                                           + juce::String (clip->numChannels() == 1 ? "Mono" : "Stereo") /* same in both languages */
+                                           + (numTracks > 1 ? utf8 (" · ") + juce::String (numTracks) + tr (" Spuren") : juce::String());
+        g.drawText (description, footer.reduced (24, 0).withTrimmedRight (270), juce::Justification::centredRight);
     }
 }
 
@@ -272,8 +313,21 @@ void RenderPage::sessionChanged()
 
     newTrackCard.setToggleState (destination() == Destination::newTrack, juce::dontSendNotification);
     replaceCard.setToggleState (destination() == Destination::replaceInTrack, juce::dontSendNotification);
+    tempoMapCard.setToggleState (destination() == Destination::tempoMap, juce::dontSendNotification);
     fromProjectStart.setToggleState (settings.exportFromProjectStart, juce::dontSendNotification);
     fromProjectStart.setEnabled (destination() == Destination::newTrack);
+
+    bitDepth.setSelected (settings.exportBits <= 16 ? 0 : settings.exportBits <= 24 ? 1 : 2);
+    if (auto clip = session.getSource())
+        sampleRate.changeItemText (1, tr ("Unverändert") + " (" + formatNumber (clip->sampleRate / 1000.0, 1) + " kHz)");
+    else
+        sampleRate.changeItemText (1, tr ("Unverändert"));
+    sampleRate.setSelectedId (settings.exportSampleRate > 0.0 ? juce::roundToInt (settings.exportSampleRate) : 1, juce::dontSendNotification);
+    if (sampleRate.getSelectedId() == 0)
+        sampleRate.setSelectedId (1, juce::dontSendNotification);
+    const bool audioFile = destination() == Destination::newTrack;
+    bitDepth.setEnabled (audioFile);
+    sampleRate.setEnabled (audioFile);
 
     if (! trackName.hasKeyboardFocus (true))
     {
@@ -283,8 +337,10 @@ void RenderPage::sessionChanged()
         trackName.setText (name, false);
     }
 
-    const bool showFile = destination() == Destination::newTrack && ! exportedFiles.isEmpty()
-                          && exportedFiles[0].existsAsFile() && session.isAlignedUpToDate();
+    const bool exportedMidi = ! exportedFiles.isEmpty() && exportedFiles[0].hasFileExtension (".mid");
+    const bool showFile = ! exportedFiles.isEmpty() && exportedFiles[0].existsAsFile()
+                          && (destination() == Destination::tempoMap ? exportedMidi
+                                                                     : destination() == Destination::newTrack && ! exportedMidi && session.isAlignedUpToDate());
     dragTile->files = exportedFiles;
 
     // Multitrack: what happens to the other tracks.
@@ -295,7 +351,9 @@ void RenderPage::sessionChanged()
         for (const auto& t : session.getExtraTracks())
             (t.kind == ExtraTrack::Kind::hostTrack ? hostTracks : files).add (t.name);
 
-        if (destination() == Destination::newTrack)
+        if (destination() == Destination::tempoMap)
+            multitrackNote.clear();
+        else if (destination() == Destination::newTrack)
             multitrackNote = tr ("Eine Datei pro Spur, alle gleich lang und ab derselben Position: zusammen auf neue Spuren ziehen.");
         else
         {
@@ -324,6 +382,10 @@ void RenderPage::refresh()
     {
         text = tr ("Wird berechnet … ") + juce::String (juce::roundToInt (session.getRenderProgress() * 100.0)) + " %";
         icon = {};
+    }
+    else if (destination() == Destination::tempoMap)
+    {
+        text = processor.isStandalone() ? tr ("Tempo-Map exportieren …") : tr ("Tempo-Map exportieren");
     }
     else if (destination() == Destination::replaceInTrack)
     {
@@ -354,9 +416,49 @@ void RenderPage::exportResult()
         render();
 }
 
+void RenderPage::exportTempoMap()
+{
+    errorText.clear();
+    if (session.getMarkers().size() < 2)
+        return;
+
+    const auto name = trackName.getText() + " - Tempo";
+    if (! processor.isStandalone())
+    {
+        writeTempoMap (Exporter::newFileFor (name, ".mid"));
+        return;
+    }
+
+    Exporter::defaultFolder().createDirectory();
+    chooser = std::make_unique<juce::FileChooser> (tr ("Tempo-Map als MIDI-Datei speichern"), Exporter::newFileFor (name, ".mid"), "*.mid");
+    juce::Component::SafePointer<RenderPage> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [safe] (const juce::FileChooser& fc) {
+                              if (safe != nullptr && fc.getResult() != juce::File())
+                                  safe->writeTempoMap (fc.getResult().withFileExtension (".mid"));
+                          });
+}
+
+void RenderPage::writeTempoMap (const juce::File& file)
+{
+    errorText.clear();
+    exportedFiles.clear();
+    const double end = session.hasSource() ? session.getSource()->endSeconds() : 0.0;
+    if (Exporter::writeTempoMap (session.getRecordingTempoMap(), end, file, errorText))
+        exportedFiles.add (file);
+    sessionChanged();
+}
+
 void RenderPage::render()
 {
     errorText.clear();
+
+    if (destination() == Destination::tempoMap)
+    {
+        exportTempoMap();
+        return;
+    }
 
     if (session.isRendering())
     {
@@ -418,7 +520,7 @@ void RenderPage::exportTo (const juce::File& firstFile)
 
     if (tracks.size() <= 1)
     {
-        if (auto aligned = session.getAligned(); aligned != nullptr && Exporter::writeWav (*aligned, firstFile, fromStart, errorText))
+        if (auto aligned = session.getAligned(); aligned != nullptr && Exporter::writeWav (*aligned, firstFile, fromStart, exportFormat(), errorText))
             exportedFiles.add (firstFile);
     }
     else
@@ -431,7 +533,7 @@ void RenderPage::exportTo (const juce::File& firstFile)
             auto file = firstFile.getSiblingFile (name + ".wav");
             if (! processor.isStandalone())
                 file = file.getNonexistentSibling (false);
-            if (! Exporter::writeWav (*t.clip, file, fromStart, errorText))
+            if (! Exporter::writeWav (*t.clip, file, fromStart, exportFormat(), errorText))
                 break;
             exportedFiles.add (file);
         }

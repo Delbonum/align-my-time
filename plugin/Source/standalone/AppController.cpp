@@ -273,6 +273,7 @@ juce::String AppController::menuText (juce::CommandID id) const
         case loadAudio:       return tr ("Audiodatei laden …");
         case addTracks:       return tr ("Weitere Spuren hinzufügen …");
         case exportResult:    return tr ("Ergebnis exportieren …");
+        case exportTempoMap:  return tr ("Tempo-Map exportieren …");
         case quitApp:         return tr ("Beenden");
         case undo:            return tr ("Rückgängig");
         case redo:            return tr ("Wiederherstellen");
@@ -320,6 +321,7 @@ juce::PopupMenu AppController::getMenuForIndex (int index, const juce::String&)
         add (loadAudio);
         add (addTracks);
         add (exportResult);
+        add (exportTempoMap);
        #if ! JUCE_MAC
         menu.addSeparator();
         add (quitApp);
@@ -392,7 +394,7 @@ void AppController::menuItemSelected (int itemID, int)
 //==============================================================================
 void AppController::getAllCommands (juce::Array<juce::CommandID>& ids)
 {
-    ids.addArray ({ newProject, openProject, saveProject, saveProjectAs, loadAudio, addTracks, exportResult, quitApp,
+    ids.addArray ({ newProject, openProject, saveProject, saveProjectAs, loadAudio, addTracks, exportResult, exportTempoMap, quitApp,
                     undo, redo, clearMarkers, targetTempo, settings, audioSettings,
                     stepTap, stepReview, stepRender, zoomIn, zoomOut, zoomFit, languageGerman, languageEnglish,
                     manual, shortcuts, credits });
@@ -415,6 +417,7 @@ void AppController::getCommandInfo (juce::CommandID id, juce::ApplicationCommand
         case loadAudio:      key ('i'); break;
         case addTracks:      key ('i', cmd | shift); break;
         case exportResult:   key ('e'); info.setActive (session.canAlign()); break;
+        case exportTempoMap: key ('e', cmd | shift); info.setActive (session.getMarkers().size() >= 2); break;
         case quitApp:        key ('q'); break;
         case undo:           key ('z'); info.setActive (session.canUndo()); break;
         case redo:
@@ -478,6 +481,10 @@ bool AppController::perform (const InvocationInfo& info)
         case exportResult:
             if (editor != nullptr && session.canAlign())
                 editor->exportResult();
+            return true;
+        case exportTempoMap:
+            if (editor != nullptr && session.getMarkers().size() >= 2)
+                editor->exportTempoMap();
             return true;
         case quitApp:        requestQuit(); return true;
         case undo:           session.undo(); return true;

@@ -26,6 +26,7 @@ public:
         loadAudio,
         addTracks,
         exportResult,
+        exportTempoMap,
         quitApp,
         undo,
         redo,

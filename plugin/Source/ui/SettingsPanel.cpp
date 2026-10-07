@@ -63,6 +63,29 @@ SettingsPanel::SettingsPanel (AlignMyTimeProcessor& p, std::function<void()> lan
     };
     addChildComponent (dragNeedsCtrl);
 
+    // Tap latency: taps usually come a little late (reaction, keyboard or MIDI latency).
+    tapOffset.setRange (-100.0, 100.0, 1.0);
+    tapOffset.setTextValueSuffix (" ms");
+    tapOffset.setTextBoxStyle (juce::Slider::TextBoxRight, false, 70, 24);
+    tapOffset.setDoubleClickReturnValue (true, 0.0);
+    tapOffset.setValue (getTapOffsetMs(), juce::dontSendNotification);
+    tapOffset.setTitle (tr ("Tap-Ausgleich"));
+    tapOffset.setTooltip (tr ("Wird zu jedem neuen Tap addiert. Negativ, wenn deine Taps zu spät kommen. Doppelklick = 0."));
+    tapOffset.onValueChange = [this] {
+        setTapOffsetMs (tapOffset.getValue());
+        updateMeasuredOffset();
+    };
+    addChildComponent (tapOffset);
+
+    setKind (applyMeasured, ButtonKind::solid);
+    applyMeasured.setButtonText (tr ("Übernehmen"));
+    applyMeasured.setWantsKeyboardFocus (false);
+    applyMeasured.onClick = [this] {
+        if (auto measured = processor.getSession().getMeasuredTapOffset())
+            tapOffset.setValue (juce::roundToInt (getTapOffsetMs() + *measured * 1000.0)); // also saves it
+    };
+    addChildComponent (applyMeasured);
+
     if (auto* manager = processor.getDeviceManager())
     {
         // Output and MIDI input (foot switch); the app works with files, so no audio input.
@@ -109,9 +132,18 @@ void SettingsPanel::showSection (Section section)
     language.setVisible (currentSection == Section::general);
     tapKey.setVisible (currentSection == Section::controls);
     dragNeedsCtrl.setVisible (currentSection == Section::controls);
+    tapOffset.setVisible (currentSection == Section::controls);
+    updateMeasuredOffset();
     deviceViewport.setVisible (currentSection == Section::audio && deviceSelector != nullptr);
     capturingKey = false;
     updateCustomKeyButton();
+    repaint();
+}
+
+void SettingsPanel::updateMeasuredOffset()
+{
+    const auto measured = processor.getSession().getMeasuredTapOffset();
+    applyMeasured.setVisible (currentSection == Section::controls && measured.has_value() && std::abs (*measured) >= 0.002);
     repaint();
 }
 
@@ -154,7 +186,15 @@ void SettingsPanel::resized()
     controls.removeFromTop (6);
     customKey.setBounds (controls.removeFromTop (34).removeFromLeft (360));
     controls.removeFromTop (4);
-    tapKeyHint = controls.removeFromTop (92);
+    tapKeyHint = controls.removeFromTop (70);
+    controls.removeFromTop (8);
+    offsetLabel = controls.removeFromTop (22);
+    tapOffset.setBounds (controls.removeFromTop (30).removeFromLeft (360));
+    controls.removeFromTop (4);
+    auto offsetRow = controls.removeFromTop (34);
+    applyMeasured.setBounds (offsetRow.removeFromRight (130).reduced (0, 2));
+    offsetRow.removeFromRight (12);
+    offsetHint = offsetRow;
     controls.removeFromTop (8);
     markerLabel = controls.removeFromTop (22);
     dragNeedsCtrl.setBounds (controls.removeFromTop (32));
@@ -219,7 +259,20 @@ void SettingsPanel::paint (juce::Graphics& g)
 
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
-        g.drawFittedText (hint, tapKeyHint, juce::Justification::topLeft, 5, 1.0f);
+        g.drawFittedText (hint, tapKeyHint, juce::Justification::topLeft, 4, 1.0f);
+
+        drawSectionLabel (g, offsetLabel, tr ("Tap-Ausgleich"));
+        juce::String offsetText = tr ("Tipp: Nach dem Tappen mit „An Transienten einrasten“ misst Align My Time hier, wie weit deine Taps neben den Anschlägen lagen.");
+        if (const auto measured = processor.getSession().getMeasuredTapOffset())
+        {
+            const int ms = juce::roundToInt (std::abs (*measured) * 1000.0);
+            offsetText = ms < 2 ? tr ("Deine Taps in diesem Projekt lagen im Schnitt genau auf den Anschlägen.")
+                                : tr ("Deine Taps in diesem Projekt lagen im Schnitt") + " " + juce::String (ms) + " ms "
+                                      + (*measured < 0.0 ? tr ("nach dem Anschlag.") : tr ("vor dem Anschlag."));
+        }
+        g.setColour (colours::muted);
+        g.setFont (uiFont (12.5f));
+        g.drawFittedText (offsetText, offsetHint, juce::Justification::centredLeft, 2, 1.0f);
 
         g.drawFittedText (markerDragNeedsCtrl()
                               ? tr ("Klick in die Wellenform spielt ab dieser Stelle ab. Marker verschieben: Strg gedrückt halten und ziehen.")

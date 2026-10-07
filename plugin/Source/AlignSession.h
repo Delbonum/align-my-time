@@ -17,7 +17,7 @@ namespace amt::plugin
 
 enum class Step { tap, review, render };
 enum class AlignMethod { timeStretch, slices };
-enum class Destination { newTrack, replaceInTrack };
+enum class Destination { newTrack, replaceInTrack, tempoMap };
 
 struct SessionSettings
 {
@@ -30,9 +30,10 @@ struct SessionSettings
     double straighten = 0.0;            ///< 0..1: how far markers are pulled towards a smooth tempo curve (0 = off)
     bool leadIn = true;
     bool clickInPreview = true;
-    double tapOffsetMs = 0.0;           ///< added to every tap (negative = taps are late)
     Destination destination = Destination::newTrack;
     bool exportFromProjectStart = true; ///< pad the file so it can be dropped at bar 1
+    int exportBits = 24;                ///< 16, 24 or 32 (float)
+    double exportSampleRate = 0.0;      ///< 0 = as rendered
     std::optional<int> firstBar;        ///< user override of the bar the first marker lands on
     bool manualTempo = false;           ///< target tempo typed in instead of taken from the host
     double manualBpm = 120.0;
@@ -82,6 +83,10 @@ public:
         all tracks when extra tracks are aligned along. */
     std::shared_ptr<const AudioClip> getSource() const { return source; }
     bool hasSource() const { return source != nullptr && ! source->isEmpty(); }
+
+    /** True while the attacks of a new source are being detected (background thread). Markers snap
+        and renders start once that is done. */
+    bool isAnalysing() const { return analysing; }
 
     //==============================================================================
     // Extra tracks (multitrack recordings)
@@ -136,6 +141,13 @@ public:
     std::optional<TapUnit> getTapUnitSuggestion() const { return tapUnitSuggestion; }
     bool canAlign() const { return hasSource() && markers.size() >= 2; }
 
+    /** The recording's own tempo (for "Tempo-Map exportieren"): every marker on its grid position at its time. */
+    TempoMap getRecordingTempoMap() const;
+
+    /** How far the tapped markers lay from the attacks they snapped to, on average (attack minus tap,
+        seconds; positive = taps were early). Needs at least 4 snapped taps. */
+    std::optional<double> getMeasuredTapOffset() const;
+
     //==============================================================================
     // Undo / redo of everything that changes the result: markers (a whole tapping pass is one
     // step), grid unit, first bar, straightening, snapping, method and target tempo.
@@ -156,7 +168,7 @@ public:
     // Step 3: rendering (on a background thread)
     void startRender();
     void cancelRender();
-    bool isRendering() const { return renderJob != nullptr; }
+    bool isRendering() const { return renderJob != nullptr || renderAfterAnalysis; }
     double getRenderProgress() const { return renderProgress.load(); }
 
     /** The aligned audio (the sum of all tracks), or nullptr. `isAlignedUpToDate()` is false after any edit. */
@@ -187,6 +199,7 @@ private:
     void markChanged (bool affectsResult = true);
     void finishRender (std::vector<std::shared_ptr<const AudioClip>> results, int generation);
     void rebuildSource();
+    void finishAnalysis (std::shared_ptr<OnsetDetector> result, int analysisRun);
     void moveMarkerTo (int index, double seconds, bool snap);
 
     /** The part of the session undo restores. */
@@ -205,7 +218,10 @@ private:
     std::shared_ptr<const AudioClip> ownTrack;
     std::vector<ExtraTrack> extraTracks;
     std::shared_ptr<const AudioClip> source; ///< own track, or the sum of all tracks
-    std::unique_ptr<OnsetDetector> detector;
+    std::shared_ptr<OnsetDetector> detector;
+    juce::ThreadPool analysisPool { 1 };
+    int analysisRun = 0;
+    bool analysing = false, renderAfterAnalysis = false;
     juce::String sourceDescription;
 
     void applyTempo();

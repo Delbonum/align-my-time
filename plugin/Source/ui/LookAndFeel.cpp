@@ -350,7 +350,10 @@ void ChoiceCard::paintButton (juce::Graphics& g, bool highlighted, bool)
     area.removeFromTop (8);
     g.setColour (colours::muted);
     g.setFont (uiFont (12.5f));
-    g.drawFittedText (description, area.removeFromTop (36), juce::Justification::topLeft, 2, 1.0f);
+    // Cards with controls at the bottom (getExtraArea) keep that space free.
+    if (getNumChildComponents() > 0)
+        area.removeFromBottom (getExtraArea().getHeight() + 6);
+    g.drawFittedText (description, area, juce::Justification::topLeft, juce::jmax (1, area.getHeight() / 16), 1.0f);
 
     if (hasKeyboardFocus (false))
     {

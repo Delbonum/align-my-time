@@ -78,6 +78,13 @@ public:
     /** Goes to "Rendern" and exports the result (rendering first if needed). */
     void exportResult();
 
+    /** Writes the recording's tempo as a MIDI file ("Tempo-Map exportieren"). */
+    void exportTempoMap();
+
+    /** The window can be resized; the whole UI is laid out at the design size and scaled. */
+    static constexpr int designWidth = 1120, designHeight = 720;
+    float getUiScale() const { return uiScale; }
+
     /** Standalone: a project file (.amtp) was dropped onto the window. */
     std::function<void (const juce::File&)> onProjectFileDropped;
 
@@ -86,6 +93,7 @@ private:
     void timerCallback() override;
     void buildUi();
     void showStep (Step step);
+    void placeOverlay (juce::Component& overlay);
     ui::Page* currentPage();
 
     AlignMyTimeProcessor& processor;
@@ -101,6 +109,9 @@ private:
     TapKeyPoller keyPoller { processor };
     Step shownStep = Step::tap;
     bool fileDragActive = false;
+    float uiScale = 1.0f;
+    bool rememberSize = false;
+    juce::AffineTransform uiTransform;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AlignMyTimeEditor)
 };
