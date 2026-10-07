@@ -3,6 +3,16 @@
 Versionen nach [Semantic Versioning](https://semver.org/lang/de/): **MAJOR.MINOR.PATCH**.
 PATCH = Fehlerbehebungen, MINOR = neue Funktionen, MAJOR = inkompatible Änderungen (z. B. gespeicherte Projekte).
 
+## 1.6.0 – 2026-10-08
+
+### Neu
+- **Echtzeit-Export** (Insert-Modus ohne ARA, Schritt „Tappen“): Exportiert die DAW die Spur schneller als in Echtzeit, bremst Align My Time den Export während der Aufnahme auf Echtzeit, damit nichts verloren geht. Standardmäßig aus.
+- **Warnung bei Lücken in der Aufnahme:** Kam Align My Time bei einem schnellen Export nicht hinterher, steht unter „Live“, wie viele Sekunden fehlen, und was zu tun ist.
+
+### Behoben
+- Die Tap-Taste sprang auf die Leertaste zurück: Die Standalone-App hielt die Einstellungsdatei doppelt offen und schrieb beim Beenden veraltete Werte zurück. Jetzt gibt es nur noch eine. Standard bleibt **Tab**.
+- README und Entwickler-Doku nennen `Tab` als Standard-Tap-Taste.
+
 ## 1.5.0 – 2026-10-07
 
 ### Neu

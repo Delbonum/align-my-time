@@ -108,6 +108,9 @@ public:
     bool isLoadingTrack() const { return loader != nullptr; }
     juce::String getLoadError() const { return loadError; }
 
+    /** Non-ARA: set when the last recording pass lost audio (e.g. an export faster than real time). */
+    juce::String getRecordingWarning() const { return recordingWarning; }
+
     /** Non-ARA: records the input while the host plays. */
     InputRecorder& getRecorder() { return recorder; }
     bool isHostPlaying() const { return hostPlaying.load(); }
@@ -157,12 +160,20 @@ private:
     juce::WeakReference<DocumentController> documentController;
     juce::AudioDeviceManager* deviceManager = nullptr;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
-    juce::String loadError;
+    juce::String loadError, recordingWarning;
 
     std::atomic<bool> hostPlaying { false };
     bool wasHostPlaying = false;
     bool wasHostPlayingForTaps = false;
     int araRetryTicks = 0;
+
+    // Non-ARA "Echtzeit-Export": an offline export is slowed down to real time while recording.
+    std::atomic<bool> realtimeExport { false };
+    std::atomic<bool> offlinePass { false }; // the host processed faster than real time
+    bool pacing = false;                      // audio thread
+    double paceStartMs = 0.0;
+    juce::int64 pacedSamples = 0;
+    void paceToRealTime (int numSamples) noexcept;
 
     // A host playback in step 1 is a tapping pass from where it started; the pass begins
     // with its first tap, so merely listening never discards markers.

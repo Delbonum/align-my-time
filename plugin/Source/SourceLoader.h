@@ -67,6 +67,7 @@ public:
     void prepare (double sampleRate, int numChannels);
 
     void setArmed (bool shouldRecord) noexcept { armed.store (shouldRecord); }
+    bool isArmed() const noexcept { return armed.load(); }
 
     /** Audio thread. */
     void push (const juce::AudioBuffer<float>& input, juce::int64 songSample) noexcept;
@@ -77,6 +78,10 @@ public:
     void reset();
     const AudioClip& getClip() const { return clip; }
     bool hasAudio() const { return ! clip.isEmpty(); }
+
+    /** Frames lost since the last call because the message thread did not keep up
+        (typically a host export faster than real time). */
+    juce::int64 takeDroppedFrames() noexcept { return droppedFrames.exchange (0); }
 
 private:
     static constexpr int blockFrames = 1024;
@@ -90,6 +95,7 @@ private:
     };
 
     std::atomic<bool> armed { false };
+    std::atomic<juce::int64> droppedFrames { 0 };
     juce::AbstractFifo fifo { numBlocks };
     std::vector<Block> blocks = std::vector<Block> (numBlocks);
     AudioClip clip;

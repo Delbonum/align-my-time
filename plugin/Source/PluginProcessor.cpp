@@ -215,6 +215,17 @@ void AlignMyTimeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         if (playing)
             recorder.push (buffer, songSample);
 
+        if (playing && isNonRealtime() && recorder.isArmed())
+        {
+            offlinePass.store (true);
+            if (realtimeExport.load())
+                paceToRealTime (buffer.getNumSamples());
+        }
+        else
+        {
+            pacing = false;
+        }
+
         // "Replace in track" without ARA: play the aligned audio instead of the live input.
         if (playing)
         {
@@ -233,6 +244,23 @@ void AlignMyTimeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     preview.render (buffer);
     tracker.update (previewing || playing, blockSeconds);
+}
+
+void AlignMyTimeProcessor::paceToRealTime (int numSamples) noexcept
+{
+    // Only ever called during non-realtime processing (host export): waiting here slows the
+    // export down to real time, so the message thread keeps up with the recorder.
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+    if (! pacing)
+    {
+        pacing = true;
+        paceStartMs = now;
+        pacedSamples = 0;
+    }
+    pacedSamples += numSamples;
+    const double due = paceStartMs + 1000.0 * (double) pacedSamples / currentSampleRate;
+    if (due - now >= 1.0)
+        juce::Thread::sleep ((int) (due - now));
 }
 
 //==============================================================================
@@ -301,6 +329,7 @@ void AlignMyTimeProcessor::timerCallback()
     // Record whenever the host plays during step 1. Every pass fills in or refreshes the part
     // that was played, so stopping early or starting in the middle is never a dead end.
     recorder.setArmed (session.getStep() == Step::tap && ! isUsingAudioFile());
+    realtimeExport.store (realtimeExportEnabled());
     if (recorder.drain())
         session.sendChangeMessage();
 
@@ -313,7 +342,19 @@ void AlignMyTimeProcessor::timerCallback()
 void AlignMyTimeProcessor::loadFromRecorder()
 {
     const auto recorded = recorder.getClip();
+    const auto dropped = recorder.takeDroppedFrames();
+    const bool offline = offlinePass.exchange (false);
     recorder.reset();
+
+    // Lost blocks leave silent gaps in the recording: tell the user how to avoid them.
+    recordingWarning.clear();
+    if (dropped > 0)
+    {
+        const auto seconds = formatNumber ((double) dropped / recorded.sampleRate, 1) + " s";
+        recordingWarning = offline ? tr ("Der Export lief zu schnell: In der Aufnahme fehlen ") + seconds
+                                         + tr (". „Echtzeit-Export“ (links) einschalten und erneut exportieren.")
+                                   : tr ("In der Aufnahme fehlen ") + seconds + tr (". Diesen Abschnitt bitte noch einmal abspielen.");
+    }
 
     float peak = 0.0f;
     for (const auto& ch : recorded.channels)
@@ -348,6 +389,7 @@ void AlignMyTimeProcessor::discardRecording()
 {
     recorder.reset();
     loadError.clear();
+    recordingWarning.clear();
     session.clearMarkers();
     session.setSource (nullptr, {});
 }
@@ -428,6 +470,7 @@ void AlignMyTimeProcessor::loadAudioFile (const juce::File& file)
         fileLoader->stopThread (5000);
 
     sourceFile = file;
+    recordingWarning.clear();
     recorder.setArmed (false);
     recorder.reset();
 
@@ -775,6 +818,7 @@ void AlignMyTimeProcessor::newProject()
 
     sourceFile = juce::File();
     loadError.clear();
+    recordingWarning.clear();
     recorder.reset();
     session.reset();
     publishLinkedTracks();

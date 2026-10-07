@@ -27,7 +27,8 @@ inline juce::String utf8 (const char* text) { return juce::String::fromUTF8 (tex
 juce::String formatNumber (double value, int decimals);
 
 /** Which key taps (besides mouse and MIDI). Default is Tab: Space usually belongs to the host's
-    transport (Cubase). Ctrl+Space never taps unless it is chosen here. */
+    transport (Cubase). Ctrl+Space never taps unless it is chosen here.
+    The default must stay Tab (the developer's explicit decision; a smoke test guards it). */
 enum class TapKey
 {
     space,
@@ -63,6 +64,11 @@ void setTapOffsetMs (double milliseconds);
     false = plain drag moves markers, Ctrl+click plays from there. */
 bool markerDragNeedsCtrl();
 void setMarkerDragNeedsCtrl (bool needsCtrl);
+
+/** Without ARA: while the track is recorded, a host export faster than real time (offline) is
+    slowed down to real time, so no audio is lost. Off by default: most hosts keep up anyway. */
+bool realtimeExportEnabled();
+void setRealtimeExportEnabled (bool enabled);
 
 /** Settings shared by all instances and the standalone app (language, tap key ...). */
 juce::PropertiesFile& appSettings();

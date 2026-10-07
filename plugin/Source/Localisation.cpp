@@ -225,6 +225,17 @@ void setMarkerDragNeedsCtrl (bool needsCtrl)
     appSettings().saveIfNeeded();
 }
 
+bool realtimeExportEnabled()
+{
+    return appSettings().getBoolValue ("realtimeExport", false);
+}
+
+void setRealtimeExportEnabled (bool enabled)
+{
+    appSettings().setValue ("realtimeExport", enabled);
+    appSettings().saveIfNeeded();
+}
+
 juce::String versionString()
 {
     return JucePlugin_VersionString;

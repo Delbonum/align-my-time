@@ -50,6 +50,8 @@ Die Audio-Ausgabe stellst du unter **Bearbeiten › Audio- und MIDI-Einstellunge
 2. Das Projekt abspielen. Das Plugin nimmt die Spur dabei auf, und du kannst im selben Durchgang mittappen. Jedes weitere Abspielen in Schritt 1 ergänzt die Aufnahme. Ein früh gestopptes oder mittendrin gestartetes Abspielen ist kein Problem.
 3. Prüfen und rendern wie mit ARA.
 
+Statt abzuspielen kannst du die Spur auch exportieren (z. B. Cubases Audio-Mixdown): Das Plugin nimmt dabei ebenso auf. Läuft der Export schneller als Echtzeit und kommt Align My Time nicht hinterher, fehlen Stücke der Aufnahme. Das Plugin merkt das und sagt rechts unter „Live“, wie viel fehlt. Dann links **Echtzeit-Export** einschalten und noch einmal exportieren: Align My Time bremst einen schnellen Export während der Aufnahme auf Echtzeit, es geht nichts mehr verloren. Meist ist das nicht nötig, deshalb ist die Option aus.
+
 Oben links neben „Quelle:“ zeigt ein kleines Schild, woher das Audio kommt: **ARA**, **Insert** oder **Datei**.
 
 Statt der Spur kannst du im Plugin auch eine Audiodatei verwenden: **Datei laden …** oder Datei ins Fenster ziehen. **Zurück zur Spur** wechselt wieder zurück.
@@ -274,6 +276,7 @@ Auf dem Mac gilt `Cmd` statt `Strg`.
 
 - **Die Leertaste stoppt die DAW statt zu tappen:** Eine andere Tap-Taste wählen (Standard `Tab`) oder in der DAW Start/Stop auf eine andere Taste legen. Unter Windows hört Align My Time die Tap-Taste auch dann, wenn die DAW sie abfängt.
 - **„Warte auf die Audiodaten …“ (ARA):** Manche DAWs geben das Audio erst nach einem Moment frei. Align My Time versucht es jede Sekunde erneut. Hilft das nicht: **Spur neu laden**.
+- **Insert-Modus: „Der Export lief zu schnell“:** Links **Echtzeit-Export** einschalten und noch einmal exportieren (oder die Spur einfach abspielen).
 - **Insert-Modus: „Beim Abspielen kam am Plugin kein Signal an“:** Ist die Spur stummgeschaltet oder steht das Plugin hinter einem Fader auf null? Das Plugin muss das Signal der Spur bekommen.
 - **Das getappte Tempo passt nicht zum Projekt:** In „Prüfen“ das Raster bei **1 Marker =** ändern oder den Vorschlag oben übernehmen.
 - **Das Fenster ist zu groß oder zu klein:** An der Ecke oder am Rand ziehen. Der Inhalt skaliert mit; Align My Time merkt sich die Größe (Plugin und App getrennt).

@@ -216,7 +216,11 @@ void InputRecorder::push (const juce::AudioBuffer<float>& input, juce::int64 son
         const int frames = juce::jmin (blockFrames, numSamples - offset);
         const auto scope = fifo.write (1);
         if (scope.blockSize1 + scope.blockSize2 == 0)
-            return; // message thread is not keeping up: drop rather than block
+        {
+            // Message thread is not keeping up: drop rather than block, but remember it.
+            droppedFrames.fetch_add (numSamples - offset);
+            return;
+        }
 
         auto& block = blocks[(size_t) (scope.blockSize1 > 0 ? scope.startIndex1 : scope.startIndex2)];
         block.songSample = songSample + offset;
@@ -265,6 +269,7 @@ void InputRecorder::reset()
 {
     while (fifo.getNumReady() > 0)
         fifo.read (fifo.getNumReady());
+    droppedFrames.store (0);
     clip = AudioClip (channels, 0, rate, 0);
 }
 

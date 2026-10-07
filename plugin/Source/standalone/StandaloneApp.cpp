@@ -115,21 +115,6 @@ private:
 class StandaloneApp : public juce::JUCEApplication
 {
 public:
-    StandaloneApp()
-    {
-        // Same settings file as JUCE's standalone window used, so audio setup and session carry over.
-        juce::PropertiesFile::Options options;
-        options.applicationName = JucePlugin_Name;
-        options.filenameSuffix = ".settings";
-        options.osxLibrarySubFolder = "Application Support";
-       #if JUCE_LINUX || JUCE_BSD
-        options.folderName = "~/.config";
-       #else
-        options.folderName = "";
-       #endif
-        appProperties.setStorageParameters (options);
-    }
-
     const juce::String getApplicationName() override { return JucePlugin_Name; }
     const juce::String getApplicationVersion() override { return JucePlugin_VersionString; }
     bool moreThanOneInstanceAllowed() override { return true; }
@@ -142,7 +127,9 @@ public:
         // Output only: the app works with audio files, so no input (and no feedback warning).
         juce::Array<juce::StandalonePluginHolder::PluginInOuts> channels;
         channels.add ({ 0, 2 });
-        window = std::make_unique<MainWindow> (std::make_unique<juce::StandalonePluginHolder> (appProperties.getUserSettings(), false,
+        // Audio setup and window position go into appSettings(): a second PropertiesFile on the same
+        // file would write back its stale copy and undo changed settings (e.g. the tap key).
+        window = std::make_unique<MainWindow> (std::make_unique<juce::StandalonePluginHolder> (&appSettings(), false,
                                                                                                 juce::String(), nullptr, channels, false));
         window->getController().restoreLastProject();
         window->setVisible (true);
@@ -163,7 +150,7 @@ public:
     void shutdown() override
     {
         window.reset();
-        appProperties.saveIfNeeded();
+        appSettings().saveIfNeeded();
         juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     }
 
@@ -182,7 +169,6 @@ private:
         return juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
     }
 
-    juce::ApplicationProperties appProperties;
     ui::AmtLookAndFeel lookAndFeel;
     std::unique_ptr<MainWindow> window;
 };

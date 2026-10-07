@@ -64,16 +64,16 @@ Ein Plugin kann in Cubase keine Spuren anlegen. Deshalb:
 | Transienten | Rund um jeden Anschlag wird das Original-Audio unverändert und exakt platziert eingesetzt | Verhindert das typische Vorecho des Time-Stretchings, Drums und Anschläge bleiben knackig |
 | Qualitätsstufen | Rhythmisch / Melodisch / Komplex (60 / 120 / 160 ms Analysefenster) | Drei verständliche Stufen statt Algorithmus-Namen |
 | Schneiden-Modus | Crossfade liegt *vor* jedem Anschlag (Standard 10 ms), Lücken werden ausgeblendet | Anschläge werden nie weichgezeichnet |
-| Tap-Eingabe | Leertaste, Mausklick (löst schon beim Drücken aus), MIDI-Note oder Sustain-Pedal | Fußschalter = Hände frei fürs Instrument |
+| Tap-Eingabe | Tap-Taste, Mausklick (löst schon beim Drücken aus), MIDI-Note oder Sustain-Pedal | Fußschalter = Hände frei fürs Instrument |
 | Tap-Fehler | Doppel-Taps (< 45 % des lokalen Abstands) werden entfernt, Lücken (> 160 %) aufgefüllt; aufgefüllte Marker erscheinen hohl | Ein verpasster Schlag zwingt nicht zum Neustart |
 | Tap-Genauigkeit | Einrasten auf den nächsten Anschlag innerhalb ±70 ms | Menschliches Tippen schwankt um ±30–50 ms |
 | Einzähler | 2 s Vorlauf statt Klick | Das Tempo der Aufnahme ist vor dem Tappen unbekannt, ein Klick im Projekttempo würde in die Irre führen |
 | Vorhören | Eigene Wiedergabe im Plugin (Original / Angepasst, optional mit Klick im Projekttempo, Mix-Regler Spur ↔ Klick) | Der Host-Transport muss nicht bedient werden |
-| Leertaste | Tappt bzw. startet die Plugin-Wiedergabe. Solange noch keine Spur da ist, geht sie an Cubase (startet dort die Wiedergabe). Das Plugin holt sich den Tastaturfokus nur, wenn man hineinklickt | Cubase bleibt bedienbar, sobald man außerhalb des Plugins klickt |
+| Tap-Taste | **Standard ist `Tab` – bewusst so festgelegt, nicht ändern.** Wählbar: Leertaste, Tab, T, Eingabe, Strg+Leertaste oder eine eigene Taste. Die Tap-Taste tappt bzw. startet die Plugin-Wiedergabe; solange noch keine Spur da ist, geht sie an den Host. Das Plugin holt sich den Tastaturfokus nur, wenn man hineinklickt | Die Leertaste gehört in DAWs dem Transport (Start/Stop) |
+| Einstellungsdatei | Genau ein `PropertiesFile` (`appSettings()`), auch für JUCEs Standalone-Teil (Audio-Setup, Fenster). Tests schreiben in eine eigene Datei (`useSettingsFile`) | Zwei Objekte auf derselben Datei schreiben sich gegenseitig veraltete Werte zurück; so war die Tap-Taste wieder auf der Leertaste gelandet |
+| Export ohne ARA | Verlorene Blöcke bei der Aufnahme werden gezählt und gemeldet. **Echtzeit-Export** (Standard aus) bremst einen Offline-Export während der Aufnahme auf Echtzeit (nur bei `isNonRealtime()`, sonst nie ein Warten im Audio-Thread) | Schnelle Exporte gehen meist gut; wenn nicht, soll der Nutzer es erfahren und eine sichere Alternative haben |
 | Gesperrte Buttons | Neben jedem ausgegrauten „Weiter“ steht der Grund (z. B. „Spiele die Spur erst einmal in Cubase ab“) | Kein Rätselraten |
 
 ## Offen / nächste Schritte
 
 - **Test in Cubase:** Gebaut wird unter Linux, Windows (lokal und CI) und macOS (CI), getestet bisher nur ohne DAW (simulierter Host). Das ARA-Verhalten in Cubase muss noch praktisch geprüft werden. Das gilt besonders für die Mehrspur-Verknüpfung über ARA (1.3.0), die der simulierte Host nicht abdeckt.
-- **Leertaste in Cubase:** Während Cubase spielt und das Plugin den Fokus hat, tappt die Leertaste; gestoppt wird dann über Cubase (Klick ins Projekt oder Transportfeld). Eventuell ist zusätzlich eine frei belegbare Tap-Taste sinnvoll.
-- **Ohne ARA:** Ein Offline-Export schneller als Echtzeit kann bei der Aufnahme Blöcke verlieren. Deshalb in Echtzeit abspielen.

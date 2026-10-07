@@ -122,8 +122,11 @@ int main (int argc, char** argv)
     const auto settingsFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("amt-smoke-settings.xml");
     settingsFile.deleteFile();
     useSettingsFile (settingsFile);
+    check (appSettings().getFile() == settingsFile, "tests write their own settings file, never the user's");
+    // Tab is the default tap key by the developer's explicit decision: never change it.
+    check (getTapKey() == TapKey::tab, "default tap key is Tab");
+    check (! realtimeExportEnabled(), "real-time export is off by default");
     setLanguage (Language::german);
-    setTapKey (TapKey::space);
     const juce::File screenshots = argc > 1 ? juce::File (juce::String (argv[1])) : juce::File();
 
     constexpr double rate = 48000.0;
@@ -180,7 +183,10 @@ int main (int argc, char** argv)
     {
         // Before anything was recorded the space bar belongs to the host (starts Cubase).
         std::unique_ptr<juce::AudioProcessorEditor> early (processor->createEditor());
-        check (! early->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)), "space bar goes to the host while there is no track yet");
+        check (! early->keyPressed (juce::KeyPress (juce::KeyPress::tabKey)), "the tap key goes to the host while there is no track yet");
+        setTapKey (TapKey::space);
+        check (! early->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey)), "... also when it is the space bar (starts Cubase)");
+        setTapKey (TapKey::tab);
     }
 
     // Stopped early, then started again in the middle: both passes add up to the whole track.
@@ -337,7 +343,7 @@ int main (int argc, char** argv)
                "custom tap key (F7) taps");
 
         restored->stopPreview();
-        setTapKey (TapKey::space);
+        setTapKey (TapKey::tab); // back to the default, which the screenshots show
     }
 
     std::printf ("7. Manual target tempo\n");
@@ -862,6 +868,54 @@ int main (int argc, char** argv)
                    && parsed[0].blocks[1].kind == Kind::bullet && parsed[0].blocks[1].cells[0] == "Punkt Fortsetzung"
                    && parsed[0].blocks[2].kind == Kind::step && parsed[0].blocks[3].header && ! parsed[0].blocks[4].header,
                "manual parser: paragraphs, lists, steps, tables");
+    }
+
+    std::printf ("17. Without ARA: host export faster than real time\n");
+    {
+        FakeHost exportHost;
+        auto rec = std::make_unique<AlignMyTimeProcessor>();
+        rec->setPlayHead (&exportHost);
+        rec->setRateAndBufferSizeDetails (rate, block);
+        rec->prepareToPlay (rate, block);
+        rec->setNonRealtime (true);
+
+        juce::AudioBuffer<float> exportBuffer (2, block);
+        juce::MidiBuffer noMidi;
+        // Renders [0, seconds) while the message thread hardly gets any time, like a fast offline export.
+        auto exportRange = [&] (double seconds) {
+            exportHost.playing = true;
+            for (exportHost.sample = 0; exportHost.sample < (juce::int64) (seconds * rate); exportHost.sample += block)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    const auto smp = (size_t) exportHost.sample + (size_t) i;
+                    exportBuffer.setSample (0, i, smp < take.left.size() ? take.left[smp] : 0.0f);
+                    exportBuffer.setSample (1, i, smp < take.right.size() ? take.right[smp] : 0.0f);
+                }
+                rec->processBlock (exportBuffer, noMidi);
+                if (exportHost.sample == 0)
+                    pumpMessages (50); // the message thread notices that the host plays, then gets no more time
+            }
+            exportHost.playing = false;
+            rec->processBlock (exportBuffer, noMidi);
+            pumpMessages (300);
+        };
+
+        exportRange (12.0);
+        std::printf ("  warning: %s\n", rec->getRecordingWarning().toRawUTF8());
+        check (rec->getSession().hasSource() && rec->getRecordingWarning().contains (juce::String::fromUTF8 ("„Echtzeit-Export“")),
+               "lost audio is detected and the user is pointed to real-time export");
+
+        setRealtimeExportEnabled (true);
+        pumpMessages (100); // the processor picks the setting up on its timer
+        rec->discardRecording();
+        const auto started = juce::Time::getMillisecondCounterHiRes();
+        exportRange (2.0);
+        const auto took = juce::Time::getMillisecondCounterHiRes() - started - 300.0; // the pump inside the export counts as export time
+        std::printf ("  2 s exported in %.0f ms\n", took);
+        check (took > 1900.0, "real-time export slows the host's offline export down to real time");
+        check (rec->getSession().hasSource() && rec->getRecordingWarning().isEmpty(), "nothing lost with real-time export");
+        setRealtimeExportEnabled (false);
     }
 
     std::printf ("\n%s\n", failures == 0 ? "ALL OK" : "FAILURES");

@@ -50,6 +50,8 @@ Set up the audio output under **Edit › Audio and MIDI settings …**.
 2. Play the project. The plug-in records the track meanwhile, and you can tap along in the same pass. Every further playback in step 1 adds to the recording. Stopping early or starting in the middle is fine.
 3. Review and render as with ARA.
 
+Instead of playing, you can also export the track (e.g. Cubase's Audio Mixdown): the plug-in records it just the same. If the export runs faster than real time and Align My Time cannot keep up, parts of the recording are missing. The plug-in notices and tells you under "Live" on the right how much is missing. Then turn on **Real-time export** on the left and export again: Align My Time slows a fast export down to real time while it records, so nothing is lost. Usually this is not needed, so the option is off.
+
 At the top left next to "Source:" a small badge shows where the audio comes from: **ARA**, **Insert** or **File**.
 
 Instead of the track you can also use an audio file in the plug-in: **Load file …** or drag the file into the window. **Back to the track** switches back.
@@ -274,6 +276,7 @@ On the Mac use `Cmd` instead of `Ctrl`.
 
 - **Space stops the DAW instead of tapping:** choose another tap key (default `Tab`) or move Start/Stop in the DAW to another key. On Windows, Align My Time hears the tap key even when the DAW catches it.
 - **"Waiting for the audio …" (ARA):** some DAWs release the audio only after a moment. Align My Time retries every second. If that does not help: **Reload track**.
+- **Insert mode: "The export ran too fast":** turn on **Real-time export** on the left and export again (or simply play the track).
 - **Insert mode: "No signal reached the plug-in during playback":** is the track muted, or is the plug-in behind a fader at zero? The plug-in needs the track's signal.
 - **The tapped tempo does not fit the project:** in "Review", change the grid at **1 marker =** or accept the suggestion at the top.
 - **The window is too big or too small:** drag its corner or edge. The content scales along; Align My Time remembers the size (plug-in and app separately).

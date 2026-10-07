@@ -2,7 +2,7 @@
 
 Ein DAW-Plugin (VST3 / AU, mit ARA 2) und eine Standalone-App, die eine frei eingespielte Spur aufs Projekttempo (oder ein frei eingegebenes Tempo) bringt, und zwar ohne Warp-Tabellen oder Hitpoint-Dialoge. Aktuelle Version: siehe [CHANGELOG.md](CHANGELOG.md).
 
-1. **Tappen:** Die ganze Spur einmal anhören und im Takt eine Taste drücken (Leertaste oder eine andere Tap-Taste, Mausklick oder MIDI-Fußschalter), auf jede Eins oder auf jede Zählzeit.
+1. **Tappen:** Die ganze Spur einmal anhören und im Takt eine Taste drücken (Tap-Taste, Standard `Tab`, Mausklick oder MIDI-Fußschalter), auf jede Eins oder auf jede Zählzeit.
 2. **Prüfen:** Marker kontrollieren und verschieben. Die Tempokurve zeigt Ausreißer, „Unsaubere Taps begradigen“ gleicht sie auf Wunsch aus. Hier wählst du Time-Stretch oder Schneiden + Verschieben und hörst vorher/nachher an.
 3. **Rendern:** Ergebnis als neue Spur (WAV per Drag & Drop, 16/24/32 bit, Samplerate wählbar) oder direkt in der Spur ersetzen (nicht-destruktiv). Oder umgekehrt: das Tempo der Aufnahme als **Tempo-Map** (MIDI-Datei) exportieren, damit das Projekt der Aufnahme folgt.
 
@@ -21,7 +21,7 @@ Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
 ## Benutzung in Cubase
 
 1. Die Events der Spur auswählen und dann **Audio › Erweiterungen › Align My Time** wählen (ARA). Alle Events der Spur landen im Plugin als *ein* großes Event.
-2. **Leertaste** startet die Wiedergabe im Plugin mit 2 s Vorlauf (oder du spielst in Cubase ab und tappst mit). Danach jede Eins (oder jede Zählzeit) mittippen. Verpasste Schläge und Doppel-Taps werden automatisch korrigiert. Jeder Marker rastet auf den nächsten Anschlag ein (±70 ms).
+2. Die **Tap-Taste** (Standard `Tab`) startet die Wiedergabe im Plugin mit 2 s Vorlauf (oder du spielst in Cubase ab und tappst mit). Danach jede Eins (oder jede Zählzeit) mittippen. Verpasste Schläge und Doppel-Taps werden automatisch korrigiert. Jeder Marker rastet auf den nächsten Anschlag ein (±70 ms).
 3. **Prüfen:** Klick in die Wellenform spielt ab dort. Marker mit **Strg+Ziehen** verschieben (umkehrbar unter Einstellungen › Bedienung), mit ←/→ um 5 ms verschieben (mit Shift um 1 ms) oder per Doppelklick neu setzen. „Ab hier neu tappen“ wiederholt nur den Rest. Unter „1 Marker =“ stellst du um, wie weit zwei Taps auseinander liegen (z. B. ½ Takt, wenn du auf 1 und 3 getippt hast). Das Plugin schlägt das auch selbst vor. Unter „Erster Marker = Takt“ legst du fest, auf welchem Projekttakt der erste Marker landet.
 4. **Rendern:**
    - *Als neue Spur*: Das Plugin schreibt eine WAV-Datei nach `Musik/Align My Time/`. Zieh die Kachel auf eine neue Spur. Mit „ab Projektanfang“ gehört die Datei an Takt 1.
@@ -39,7 +39,7 @@ Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
 
 **Audiodatei statt Spur:** Mit „Datei laden …“ oder per Drag & Drop einer Audiodatei ins Fenster arbeitest du mit einer Datei statt mit der Spur. „Zurück zur Spur“ wechselt zurück.
 
-**Ohne ARA** (andere DAWs, oder als normaler Insert) setzt du das Plugin als Insert auf die Spur und spielst das Projekt einmal ab. Das Plugin nimmt die Spur dabei auf, und du kannst im selben Durchgang mittappen. Jedes weitere Abspielen in Schritt 1 ergänzt die Aufnahme. Oben links zeigt „ARA“ oder „Insert“, in welchem Modus das Plugin gerade läuft.
+**Ohne ARA** (andere DAWs, oder als normaler Insert) setzt du das Plugin als Insert auf die Spur und spielst das Projekt einmal ab. Das Plugin nimmt die Spur dabei auf, und du kannst im selben Durchgang mittappen. Jedes weitere Abspielen in Schritt 1 ergänzt die Aufnahme. Oben links zeigt „ARA“ oder „Insert“, in welchem Modus das Plugin gerade läuft. Auch ein Export der Spur wird aufgenommen; ist er zu schnell und fehlt dadurch etwas, warnt das Plugin, und **Echtzeit-Export** bremst ihn auf Echtzeit.
 
 **Standalone-App:** Audiodatei laden (WAV, AIFF, FLAC, Ogg, MP3), Tempo oben rechts eingeben, tappen, prüfen, als WAV exportieren. Die Menüleiste (Datei | Bearbeiten | Ansicht | Hilfe) bietet Projekte (`.amtp`: neu, öffnen, speichern, zuletzt geöffnet), Rückgängig/Wiederherstellen, die Schritte, Zoom, Sprache, Handbuch und Credits. Das Projektformat steht in [docs/PROJEKTFORMAT.md](docs/PROJEKTFORMAT.md).
 

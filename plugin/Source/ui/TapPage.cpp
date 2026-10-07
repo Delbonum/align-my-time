@@ -95,6 +95,14 @@ TapPage::TapPage (AlignMyTimeProcessor& p) : Page (p), pad (std::make_unique<Tap
     leadIn.onClick = [this] { session.updateSettings ([this] (SessionSettings& s) { s.leadIn = leadIn.getToggleState(); }); };
     addAndMakeVisible (leadIn);
 
+    realtimeExport.setTooltip (withHostName (tr ("Exportiert Cubase die Spur schneller als in Echtzeit, bremst Align My Time den Export "
+                                                 "auf Echtzeit, damit bei der Aufnahme nichts verloren geht.")));
+    realtimeExport.onClick = [this] {
+        setRealtimeExportEnabled (realtimeExport.getToggleState());
+        repaint();
+    };
+    addChildComponent (realtimeExport);
+
     mode.onChange = [this] (int i) {
         session.updateSettings ([i] (SessionSettings& s) { s.tapUnit = i == 0 ? TapUnit::bar : i == 1 ? TapUnit::halfBar : TapUnit::beat; });
     };
@@ -117,7 +125,7 @@ TapPage::TapPage (AlignMyTimeProcessor& p) : Page (p), pad (std::make_unique<Tap
     addAndMakeVisible (clearAll);
     addAndMakeVisible (next);
 
-    for (auto* c : { (juce::Component*) &rewind, (juce::Component*) &playStop, (juce::Component*) &leadIn, (juce::Component*) &undo,
+    for (auto* c : { (juce::Component*) &rewind, (juce::Component*) &playStop, (juce::Component*) &leadIn, (juce::Component*) &realtimeExport, (juce::Component*) &undo,
                      (juce::Component*) &clearAll, (juce::Component*) &next })
         c->setWantsKeyboardFocus (false); // keep the space bar for tapping
 }
@@ -143,6 +151,8 @@ void TapPage::resized()
     leadIn.setBounds (left.removeFromTop (32));
     left.removeFromTop (14 + 22);
     mode.setBounds (left.removeFromTop (40));
+    left.removeFromTop (12 + 20 + 10); // time signature (painted)
+    realtimeExport.setBounds (left.removeFromTop (32));
 
     pad->setBounds (area.withSizeKeepingCentre (area.getWidth(), juce::jmin (area.getHeight(), 270)));
 
@@ -231,12 +241,16 @@ void TapPage::paint (juce::Graphics& g)
     // Hint
     auto hint = hintBox;
     const auto suggestion = session.getTapUnitSuggestion();
-    drawIcon (g, "info", hint.removeFromLeft (16).withHeight (16).toFloat(), suggestion.has_value() ? colours::accent : colours::muted);
+    const auto recordingWarning = processor.getRecordingWarning();
+    const bool important = suggestion.has_value() || recordingWarning.isNotEmpty();
+    drawIcon (g, "info", hint.removeFromLeft (16).withHeight (16).toFloat(), important ? colours::accent : colours::muted);
     hint.removeFromLeft (10);
-    g.setColour (suggestion.has_value() ? colours::accent : colours::muted);
+    g.setColour (important ? colours::accent : colours::muted);
     g.setFont (uiFont (12.5f));
     juce::String hintText = tr ("Einen Schlag verpasst? Einfach weitertippen – Lücken werden ergänzt, und im nächsten Schritt lässt sich jeder Marker korrigieren.");
-    if (suggestion.has_value())
+    if (recordingWarning.isNotEmpty())
+        hintText = recordingWarning;
+    else if (suggestion.has_value())
         hintText = tr ("Das getappte Tempo passt nicht zum Projekt. Kein Problem: Im nächsten Schritt kannst du die Taps z. B. als ")
                    + describeTapUnit (*suggestion) + tr (" werten.");
     else if (! processor.isStandalone() && getTapKey() == TapKey::space && juce::PluginHostType().isCubase())
@@ -256,6 +270,8 @@ void TapPage::sessionChanged()
                       : settings.tapUnit == TapUnit::halfBar                                    ? 1
                                                                                                 : 0);
     leadIn.setToggleState (settings.leadIn, juce::dontSendNotification);
+    realtimeExport.setVisible (recordsFromInput());
+    realtimeExport.setToggleState (realtimeExportEnabled(), juce::dontSendNotification);
 
     wave.setClip (session.getSource());
     const auto [start, end] = viewRange();
@@ -276,6 +292,11 @@ void TapPage::sessionChanged()
 
     refresh();
     repaint();
+}
+
+bool TapPage::recordsFromInput() const
+{
+    return ! processor.isStandalone() && ! processor.usesARA() && ! processor.isUsingAudioFile();
 }
 
 juce::String TapPage::nextTapLabel() const

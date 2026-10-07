@@ -30,10 +30,13 @@ private:
     void togglePlayback();
     void tap();
     juce::String nextTapLabel() const;
+    /** Without ARA the track is recorded from the input; only then the export speed matters. */
+    bool recordsFromInput() const;
 
     WaveformView wave;
     juce::TextButton rewind, playStop, undo, clearAll, next;
     ToggleRow leadIn { tr ("Vorlauf (2 s)") };
+    ToggleRow realtimeExport { tr ("Echtzeit-Export") };
     SegmentedControl mode { { tr ("Jede Eins"), tr ("1 und 3"), tr ("Jede Zählzeit") } };
     std::unique_ptr<TapPad> pad;
 
