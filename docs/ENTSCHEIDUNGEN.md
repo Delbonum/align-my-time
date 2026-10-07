@@ -74,7 +74,6 @@ Ein Plugin kann in Cubase keine Spuren anlegen. Deshalb:
 
 ## Offen / nächste Schritte
 
-- **Test in Cubase:** Bisher wurde nur unter Linux gebaut und ohne DAW getestet (simulierter Host). Windows- und macOS-Builds erzeugt die CI. Das ARA-Verhalten in Cubase muss noch praktisch geprüft werden. Das gilt besonders für die Mehrspur-Verknüpfung über ARA (1.3.0), die der simulierte Host nicht abdeckt.
+- **Test in Cubase:** Gebaut wird unter Linux, Windows (lokal und CI) und macOS (CI), getestet bisher nur ohne DAW (simulierter Host). Das ARA-Verhalten in Cubase muss noch praktisch geprüft werden. Das gilt besonders für die Mehrspur-Verknüpfung über ARA (1.3.0), die der simulierte Host nicht abdeckt.
 - **Leertaste in Cubase:** Während Cubase spielt und das Plugin den Fokus hat, tappt die Leertaste; gestoppt wird dann über Cubase (Klick ins Projekt oder Transportfeld). Eventuell ist zusätzlich eine frei belegbare Tap-Taste sinnvoll.
-- **Tap-Latenz kalibrieren:** Die Einstellung `tapOffsetMs` existiert, ist aber noch nicht in der Oberfläche. Das Einrasten auf Anschläge fängt den Versatz in der Praxis meist ab.
 - **Ohne ARA:** Ein Offline-Export schneller als Echtzeit kann bei der Aufnahme Blöcke verlieren. Deshalb in Echtzeit abspielen.
