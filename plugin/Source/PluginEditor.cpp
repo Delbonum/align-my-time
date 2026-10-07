@@ -247,6 +247,12 @@ void AlignMyTimeEditor::filesDropped (const juce::StringArray& files, int, int)
     {
         processor.getSession().setStep (Step::tap);
         processor.loadAudioFile (juce::File (files[0]));
+
+        // Several files at once: a multitrack recording, aligned together.
+        juce::Array<juce::File> extra;
+        for (int i = 1; i < files.size(); ++i)
+            extra.add (juce::File (files[i]));
+        processor.addExtraFiles (extra);
     }
 }
 

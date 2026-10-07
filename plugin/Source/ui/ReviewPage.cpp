@@ -77,6 +77,20 @@ ReviewPage::ReviewPage (AlignMyTimeProcessor& p) : Page (p)
     };
     snap.onClick = [this] { session.setSnapToAttacks (snap.getToggleState()); };
 
+    // Evens out sloppy taps; only an option, the tapped markers themselves stay untouched.
+    straighten.setRange (0.0, 100.0, 1.0);
+    straighten.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 24);
+    straighten.textFromValueFunction = [] (double v) { return v < 0.5 ? tr ("Aus") : juce::String (juce::roundToInt (v)) + " %"; };
+    straighten.valueFromTextFunction = [] (const juce::String& text) { return juce::jlimit (0.0, 100.0, text.retainCharacters ("0123456789.").getDoubleValue()); };
+    straighten.setDoubleClickReturnValue (true, 0.0);
+    straighten.updateText();
+    straighten.setTitle (tr ("Unsaubere Taps begradigen"));
+    straighten.setTooltip (tr ("Zieht die Marker zu einem gleichmäßigen Tempoverlauf: einzelne unsaubere Taps werden korrigiert, "
+                               "Tempoänderungen bleiben erhalten. Mit „An Transienten einrasten“ landen korrigierte Marker auf dem "
+                               "tatsächlichen Anschlag. 100 % = ganz, Aus = wie getappt (Doppelklick). Von Hand gesetzte Marker bleiben, wo sie sind."));
+    straighten.onValueChange = [this] { session.setStraighten (straighten.getValue() / 100.0); };
+    addAndMakeVisible (straighten);
+
     // How far apart the taps are on the grid: fixes "I tapped on 1 and 3" without re-tapping.
     configureButton (unitBigger, {}, "nudge-l", ButtonKind::ghost);
     unitBigger.setTooltip (tr ("Größerer Abstand (z. B. 2 Takte)"));
@@ -206,6 +220,10 @@ void ReviewPage::resized()
     sliceCard.setBounds (cards);
     quality.setBounds (stretchCard.getExtraArea().withHeight (36));
     crossfade.setBounds (sliceCard.getExtraArea().withHeight (30));
+    middle.removeFromTop (14);
+    auto straightenRow = middle.removeFromTop (34);
+    straightenLabel = straightenRow.removeFromLeft (190);
+    straighten.setBounds (straightenRow);
 
     auto right = rightColumn.withTrimmedTop (22);
     ab.setBounds (right.removeFromTop (40));
@@ -289,6 +307,10 @@ void ReviewPage::paint (juce::Graphics& g)
     }
     g.drawText (offset, offsetBox, juce::Justification::centred);
 
+    g.setColour (colours::muted);
+    g.setFont (uiFont (12.5f));
+    g.drawText (tr ("Unsaubere Taps begradigen"), straightenLabel, juce::Justification::centredLeft);
+
     // Grid unit
     {
         auto unitArea = juce::Rectangle<int> (leftColumn.getX(), unitRow.getY(), leftColumn.getWidth(), unitRow.getHeight());
@@ -341,6 +363,8 @@ juce::String ReviewPage::selectedInfo() const
                        : m.origin == MarkerOrigin::manual ? tr ("von Hand gesetzt")
                        : m.snappedToAttack                ? tr ("an Transiente gerastet")
                                                           : tr ("getappt");
+    if (std::abs (session.getStraightenShift (sel)) >= 0.0005)
+        how << tr (", begradigt");
     return position + "\n" + how;
 }
 
@@ -371,6 +395,7 @@ void ReviewPage::sessionChanged()
     removeMarker.setEnabled (hasSelection);
     retap.setEnabled (hasSelection);
     snap.setToggleState (settings.snapToAttacks, juce::dontSendNotification);
+    straighten.setValue (settings.straighten * 100.0, juce::dontSendNotification);
 
     stretchCard.setToggleState (settings.method == AlignMethod::timeStretch, juce::dontSendNotification);
     sliceCard.setToggleState (settings.method == AlignMethod::slices, juce::dontSendNotification);

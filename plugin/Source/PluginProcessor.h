@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AlignSession.h"
+#include "DocumentController.h"
 #include "PreviewPlayer.h"
 #include "SourceLoader.h"
 
@@ -61,6 +62,30 @@ public:
 
     bool isStandalone() const { return wrapperType == wrapperType_Standalone; }
 
+    //==============================================================================
+    // Extra tracks: several tracks recorded together (e.g. all drum microphones) are aligned with
+    // the same markers, so they stay in phase.
+    /** Adds audio files as extra tracks (placed at song position 0, like a loaded file). Without a
+        track yet, the first file becomes this plug-in's track. */
+    void addExtraFiles (const juce::Array<juce::File>& files);
+    void removeExtraTrack (ExtraTrack::Kind kind, const juce::String& id);
+
+    /** ARA: another track of the project that Align My Time is active on. */
+    struct HostTrack
+    {
+        juce::String id, name;
+        bool linked = false;         ///< aligned along with this track
+        juce::String linkedElsewhere; ///< the track whose instance already aligns it, if another one
+    };
+    std::vector<HostTrack> getHostTracks() const;
+    void setHostTrackLinked (const juce::String& id, bool shouldBeLinked);
+
+    /** ARA: the track whose instance aligns this track along with its own (empty if none). */
+    juce::String getLinkedByName() const;
+
+    /** A short name for this plug-in's own track (for file names): host track, file or recording. */
+    juce::String getOwnTrackName() const;
+
     /** Taps from the key poller (any thread): song time at the moment of the key press. */
     void pushKeyTap (double songSeconds) noexcept;
     bool isLoadingTrack() const { return loader != nullptr; }
@@ -93,6 +118,16 @@ private:
     void timerCallback() override;
     void loadFromRecorder();
 
+    juce::ARARegionSequence* getOwnHostTrack() const;
+    std::vector<juce::ARARegionSequence*> getOtherHostTracks() const;
+    juce::ARARegionSequence* findHostTrack (const juce::String& id) const;
+    static juce::String hostTrackId (juce::ARARegionSequence* track);
+    static juce::String hostTrackName (juce::ARARegionSequence* track);
+    void loadExtraTrack (const ExtraTrack& track);
+    void loadMissingExtraTracks();
+    /** Tells the linked host tracks what to play (aligned audio or their own events). */
+    void publishLinkedTracks();
+
     AlignSession session;
     PreviewPlayer preview;
     PlayPositionTracker tracker;
@@ -100,6 +135,9 @@ private:
     std::unique_ptr<TrackLoader> loader;
     juce::File sourceFile;
     std::unique_ptr<juce::Thread> fileLoader;
+    std::map<juce::String, std::unique_ptr<juce::Thread>> extraFileLoaders;
+    std::map<juce::String, std::unique_ptr<TrackLoader>> hostTrackLoaders;
+    juce::WeakReference<DocumentController> documentController;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
     juce::String loadError;
 

@@ -27,6 +27,7 @@ struct SessionSettings
     StretchQuality quality = StretchQuality::rhythmic;
     double crossfadeMs = 10.0;
     bool snapToAttacks = true;
+    double straighten = 0.0;            ///< 0..1: how far markers are pulled towards a smooth tempo curve (0 = off)
     bool leadIn = true;
     bool clickInPreview = true;
     double tapOffsetMs = 0.0;           ///< added to every tap (negative = taps are late)
@@ -41,6 +42,25 @@ struct SessionSettings
     juce::String trackName;
 };
 
+/** Another track aligned together with this one, e.g. the other microphones of a drum recording:
+    same markers, same warp, rendered sample-aligned with this track. */
+struct ExtraTrack
+{
+    enum class Kind { file, hostTrack };
+
+    Kind kind = Kind::file;
+    juce::String id;                       ///< file path, or the host's track name (ARA)
+    juce::String name;                     ///< shown in the UI and used for exported file names
+    std::shared_ptr<const AudioClip> clip; ///< nullptr while loading or when missing
+};
+
+/** One rendered track. `id` is empty for this plug-in's own track. */
+struct AlignedTrack
+{
+    juce::String id, name;
+    std::shared_ptr<const AudioClip> clip;
+};
+
 /** Everything the three steps work on: the merged track, the markers, the alignment plan and
     the rendered result. Lives on the message thread; the audio thread only sees SharedClips. */
 class AlignSession : public juce::ChangeBroadcaster
@@ -51,10 +71,24 @@ public:
 
     //==============================================================================
     // Source and project
+    /** This plug-in's own track (ARA events, input recording or audio file). */
     void setSource (std::shared_ptr<const AudioClip> clip, const juce::String& description);
+    std::shared_ptr<const AudioClip> getOwnTrack() const { return ownTrack; }
+    const juce::String& getSourceDescription() const { return sourceDescription; }
+
+    /** What is shown, tapped along to, snapped to and previewed: the own track, or the sum of
+        all tracks when extra tracks are aligned along. */
     std::shared_ptr<const AudioClip> getSource() const { return source; }
     bool hasSource() const { return source != nullptr && ! source->isEmpty(); }
-    const juce::String& getSourceDescription() const { return sourceDescription; }
+
+    //==============================================================================
+    // Extra tracks (multitrack recordings)
+    /** Adds the track, or updates the one with the same kind and id (e.g. once its audio is loaded). */
+    void setExtraTrack (ExtraTrack track);
+    void removeExtraTrack (ExtraTrack::Kind kind, const juce::String& id);
+    const std::vector<ExtraTrack>& getExtraTracks() const { return extraTracks; }
+    /** Tracks with audio, including the own one. */
+    int getNumTracks() const;
 
     /** Tempo map reported by the host (ARA or play head). */
     void setHostTempo (const TempoMap& tempo);
@@ -78,7 +112,10 @@ public:
 
     //==============================================================================
     // Step 2: review
-    const std::vector<Marker>& getMarkers() const { return markers; }
+    /** The markers as they are aligned: the edited markers, evened out by `settings.straighten`. */
+    const std::vector<Marker>& getMarkers() const { return straightenedMarkers; }
+    /** How far marker `index` was moved by straightening (seconds). */
+    double getStraightenShift (int index) const;
     const std::vector<MarkerIssue>& getIssues() const { return issues; }
     int getNumInsertedMarkers() const;
 
@@ -89,6 +126,7 @@ public:
     void addMarker (double seconds);
     void removeSelected();
     void setSnapToAttacks (bool shouldSnap);
+    void setStraighten (double amount);
 
     const AlignmentPlan& getPlan() const { return plan; }
 
@@ -112,14 +150,21 @@ public:
     bool isRendering() const { return renderJob != nullptr; }
     double getRenderProgress() const { return renderProgress.load(); }
 
-    /** The aligned audio, or nullptr. `isAlignedUpToDate()` is false after any edit. */
+    /** The aligned audio (the sum of all tracks), or nullptr. `isAlignedUpToDate()` is false after any edit. */
     std::shared_ptr<const AudioClip> getAligned() const { return alignedForUi; }
     bool isAlignedUpToDate() const { return alignedUpToDate; }
+
+    /** Every rendered track on its own (own track first), all starting at the same sample. */
+    const std::vector<AlignedTrack>& getAlignedTracks() const { return alignedTracks; }
 
     /** What the track should play instead of its original audio ("replace in track"). */
     SharedClip& getReplacementSlot() { return replacement; }
     void setReplaceActive (bool active);
-    bool isReplaceActive() const { return replacement.get() != nullptr; }
+    bool isReplaceActive() const { return replaceActive; }
+
+    /** Called whenever the replacement audio changes (switched on/off or re-rendered), so the
+        extra host tracks can follow. */
+    std::function<void()> onReplacementChanged;
 
     //==============================================================================
     juce::ValueTree toValueTree() const;
@@ -131,9 +176,12 @@ public:
 private:
     void rebuildMarkers();
     void markChanged (bool affectsResult = true);
-    void finishRender (std::shared_ptr<const AudioClip> result, int generation);
+    void finishRender (std::vector<std::shared_ptr<const AudioClip>> results, int generation);
+    void rebuildSource();
 
-    std::shared_ptr<const AudioClip> source;
+    std::shared_ptr<const AudioClip> ownTrack;
+    std::vector<ExtraTrack> extraTracks;
+    std::shared_ptr<const AudioClip> source; ///< own track, or the sum of all tracks
     std::unique_ptr<OnsetDetector> detector;
     juce::String sourceDescription;
 
@@ -147,7 +195,8 @@ private:
     std::vector<double> liveTaps;      ///< taps of the current pass
     double tapPassStart = std::numeric_limits<double>::infinity();
 
-    std::vector<Marker> markers;
+    std::vector<Marker> markers;             ///< as tapped, snapped and edited
+    std::vector<Marker> straightenedMarkers; ///< what is shown and aligned
     std::vector<MarkerIssue> issues;
     int selectedMarker = -1;
     AlignmentPlan plan;
@@ -161,7 +210,10 @@ private:
     std::atomic<double> renderProgress { 0.0 };
     int generation = 0;
     std::shared_ptr<const AudioClip> alignedForUi;
+    std::vector<AlignedTrack> alignedTracks;
+    std::vector<AlignedTrack> renderingTracks; ///< what the running render job works on (clips = sources)
     bool alignedUpToDate = false;
+    bool replaceActive = false;
     bool restoredReplaceActive = false;
     SharedClip replacement;
 

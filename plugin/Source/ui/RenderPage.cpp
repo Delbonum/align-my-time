@@ -8,8 +8,8 @@ namespace amt::plugin::ui
 class RenderPage::DragTile : public juce::Component
 {
 public:
-    juce::File file;
-    bool savedOnly = false; // standalone: nothing to drag into
+    juce::Array<juce::File> files; // all tracks are dragged together
+    bool savedOnly = false;        // standalone: nothing to drag into
 
     void paint (juce::Graphics& g) override
     {
@@ -28,16 +28,21 @@ public:
         area.removeFromLeft (10);
         g.setColour (colours::text);
         g.setFont (uiFont (13.5f, true));
-        g.drawText ((savedOnly ? tr ("Gespeichert: ") : tr ("In die DAW ziehen: ")) + file.getFileName(), area.removeFromTop (area.getHeight() / 2), juce::Justification::bottomLeft);
+        const auto what = files.size() == 1 ? files[0].getFileName() : juce::String (files.size()) + tr (" Dateien, eine pro Spur");
+        g.drawText ((savedOnly ? tr ("Gespeichert: ") : tr ("In die DAW ziehen: ")) + what, area.removeFromTop (area.getHeight() / 2), juce::Justification::bottomLeft);
         g.setColour (colours::muted);
         g.setFont (uiFont (12.0f));
-        g.drawText (file.getParentDirectory().getFullPathName(), area, juce::Justification::topLeft);
+        g.drawText (files.isEmpty() ? juce::String() : files[0].getParentDirectory().getFullPathName(), area, juce::Justification::topLeft);
     }
 
     void mouseDrag (const juce::MouseEvent&) override
     {
-        if (file.existsAsFile())
-            juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this);
+        juce::StringArray paths;
+        for (const auto& f : files)
+            if (f.existsAsFile())
+                paths.add (f.getFullPathName());
+        if (! paths.isEmpty())
+            juce::DragAndDropContainer::performExternalDragDropOfFiles (paths, false, this);
     }
 
     void mouseEnter (const juce::MouseEvent&) override { setMouseCursor (juce::MouseCursor::DraggingHandCursor); }
@@ -83,7 +88,10 @@ RenderPage::RenderPage (AlignMyTimeProcessor& p) : Page (p), dragTile (std::make
 
     addChildComponent (*dragTile);
     configureButton (showInFolder, tr ("Im Ordner zeigen"), "folder", ButtonKind::ghost);
-    showInFolder.onClick = [this] { exportedFile.revealToUser(); };
+    showInFolder.onClick = [this] {
+        if (! exportedFiles.isEmpty())
+            exportedFiles[0].revealToUser();
+    };
     addChildComponent (showInFolder);
 
     configureButton (back, tr ("Zurück"), "arrow-l", ButtonKind::ghost);
@@ -200,6 +208,12 @@ void RenderPage::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xffff8a7a));
         g.drawFittedText (errorText, rightArea.withTrimmedTop (170), juce::Justification::topLeft, 3);
     }
+    else if (multitrackNote.isNotEmpty())
+    {
+        g.setColour (colours::muted);
+        g.setFont (uiFont (12.0f));
+        g.drawFittedText (multitrackNote, rightArea.withTrimmedTop (dragTile->isVisible() ? 170 : 66), juce::Justification::topLeft, 3);
+    }
 
     paintFooter (g, footer);
 
@@ -215,8 +229,10 @@ void RenderPage::paint (juce::Graphics& g)
     {
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
+        const int numTracks = session.getNumTracks();
         g.drawText (formatNumber (clip->sampleRate / 1000.0, 1) + utf8 (" kHz · 24 bit · ")
-                        + juce::String (clip->numChannels() == 1 ? "Mono" : "Stereo") /* same in both languages */,
+                        + juce::String (clip->numChannels() == 1 ? "Mono" : "Stereo") /* same in both languages */
+                        + (numTracks > 1 ? utf8 (" · ") + juce::String (numTracks) + tr (" Spuren") : juce::String()),
                     footer.reduced (24, 0).withTrimmedRight (270), juce::Justification::centredRight);
     }
 }
@@ -263,8 +279,28 @@ void RenderPage::sessionChanged()
         trackName.setText (name, false);
     }
 
-    const bool showFile = settings.destination == Destination::newTrack && exportedFile.existsAsFile() && session.isAlignedUpToDate();
-    dragTile->file = exportedFile;
+    const bool showFile = settings.destination == Destination::newTrack && ! exportedFiles.isEmpty()
+                          && exportedFiles[0].existsAsFile() && session.isAlignedUpToDate();
+    dragTile->files = exportedFiles;
+
+    // Multitrack: what happens to the other tracks.
+    multitrackNote.clear();
+    if (session.getNumTracks() > 1)
+    {
+        juce::StringArray hostTracks, files;
+        for (const auto& t : session.getExtraTracks())
+            (t.kind == ExtraTrack::Kind::hostTrack ? hostTracks : files).add (t.name);
+
+        if (settings.destination == Destination::newTrack)
+            multitrackNote = tr ("Eine Datei pro Spur, alle gleich lang und ab derselben Position: zusammen auf neue Spuren ziehen.");
+        else
+        {
+            if (! hostTracks.isEmpty())
+                multitrackNote = tr ("Ersetzt auch in:") + " " + hostTracks.joinIntoString (", ") + ".";
+            if (! files.isEmpty())
+                multitrackNote << (multitrackNote.isEmpty() ? "" : " ") << tr ("Zusätzliche Audiodateien gibt es nur als neue Spur.");
+        }
+    }
     dragTile->setVisible (showFile);
     showInFolder.setVisible (showFile);
 
@@ -345,7 +381,25 @@ void RenderPage::finishPendingAction()
         return;
     }
 
-    exportedFile = Exporter::writeWav (*aligned, trackName.getText(), settings.exportFromProjectStart, errorText);
+    exportedFiles.clear();
+    const auto& tracks = session.getAlignedTracks();
+    if (tracks.size() <= 1)
+    {
+        exportedFiles.add (Exporter::writeWav (*aligned, trackName.getText(), settings.exportFromProjectStart, errorText));
+    }
+    else
+    {
+        // One file per track, named after the track, all padded the same way.
+        for (const auto& t : tracks)
+        {
+            const auto name = trackName.getText() + utf8 (" – ") + (t.id.isEmpty() ? processor.getOwnTrackName() : t.name);
+            const auto file = Exporter::writeWav (*t.clip, name, settings.exportFromProjectStart, errorText);
+            if (file == juce::File())
+                break;
+            exportedFiles.add (file);
+        }
+    }
+    exportedFiles.removeAllInstancesOf (juce::File());
     sessionChanged();
 }
 

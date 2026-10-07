@@ -215,6 +215,40 @@ const std::unordered_map<std::string, const char*>& englishTranslations()
         { "Tempo vom Projekt übernehmen", "Use the project tempo" },
         { "Tempo je Takt", "Tempo per bar" },
         { "Erscheint, sobald mindestens zwei Marker gesetzt sind.", "Appears as soon as at least two markers are set." },
+        { "Aus", "Off" },
+        { "Aufnahme", "Recording" },
+        { "Weitere Spuren mit denselben Markern anpassen, z. B. alle Mikrofone einer Schlagzeugaufnahme. "
+          "Alle Spuren werden gleich behandelt und bleiben phasengleich.",
+          "Align more tracks with the same markers, e.g. all microphones of a drum recording. "
+          "All tracks are treated the same and stay in phase." },
+        { " weitere Spur", " more track" },
+        { " weitere Spuren", " more tracks" },
+        { " (Summe)", " (sum)" },
+        { "Wird mit Spur", "Aligned along with track" },
+        { "angepasst – Marker und Rendern dort.", "– markers and rendering are done there." },
+        { "Spuren", "Tracks" },
+        { "Mehrspur", "Multitrack" },
+        { "Mit denselben Markern anpassen", "Align with the same markers" },
+        { "Weitere Spuren erscheinen hier, wenn Align My Time auch auf ihnen läuft.", "More tracks appear here when Align My Time runs on them too." },
+        { "schon mit", "already with" },
+        { "Audiodateien hinzufügen …", "Add audio files …" },
+        { "Entfernen:", "Remove:" },
+        { " (wird geladen …)", " (loading …)" },
+        { "Weitere Spuren laden", "Load more tracks" },
+        { " Dateien, eine pro Spur", " files, one per track" },
+        { " Spuren", " tracks" },
+        { "Eine Datei pro Spur, alle gleich lang und ab derselben Position: zusammen auf neue Spuren ziehen.",
+          "One file per track, all the same length and from the same position: drag them onto new tracks together." },
+        { "Ersetzt auch in:", "Also replaces in:" },
+        { "Zusätzliche Audiodateien gibt es nur als neue Spur.", "Extra audio files are only available as new tracks." },
+        { "Unsaubere Taps begradigen", "Even out sloppy taps" },
+        { ", begradigt", ", evened out" },
+        { "Zieht die Marker zu einem gleichmäßigen Tempoverlauf: einzelne unsaubere Taps werden korrigiert, "
+          "Tempoänderungen bleiben erhalten. Mit „An Transienten einrasten“ landen korrigierte Marker auf dem "
+          "tatsächlichen Anschlag. 100 % = ganz, Aus = wie getappt (Doppelklick). Von Hand gesetzte Marker bleiben, wo sie sind.",
+          "Pulls the markers towards a smooth tempo curve: single sloppy taps are corrected, tempo changes are kept. "
+          "With “Snap to transients”, corrected markers land on the actual attack. 100 % = fully, Off = as tapped "
+          "(double-click). Markers placed by hand stay where they are." },
     };
     return table;
 }

@@ -18,7 +18,8 @@ struct SharedReadThread : juce::TimeSliceThread
 };
 
 /** Plays the track's events the way the host asks for them, or - once the user chose
-    "replace in track" - the aligned audio in their place. */
+    "replace in track" - the aligned audio in their place. The aligned audio comes from this
+    instance, or from another instance that aligns this track along with its own (multitrack). */
 class PlaybackRenderer final : public juce::ARAPlaybackRenderer
 {
 public:
@@ -26,6 +27,9 @@ public:
 
     /** Set by the processor when the plug-in instance binds to ARA. */
     void setReplacementSource (SharedClip* slot) noexcept { replacement = slot; }
+
+    /** The track (region sequence) this renderer plays, or nullptr. */
+    juce::ARARegionSequence* getTrack() const;
 
     void prepareToPlay (double sampleRate, int maximumSamplesPerBlock, int numChannels,
                         juce::AudioProcessor::ProcessingPrecision, AlwaysNonRealtime alwaysNonRealtime) override;
@@ -46,6 +50,7 @@ private:
     Reader& readerFor (juce::ARAAudioSource* source);
 
     SharedClip* replacement = nullptr;
+    std::atomic<SharedClip*> linkedReplacement { nullptr };
     juce::SharedResourcePointer<SharedReadThread> readThread;
     std::map<juce::ARAAudioSource*, Reader> readers;
     std::unique_ptr<juce::AudioBuffer<float>> tempBuffer;

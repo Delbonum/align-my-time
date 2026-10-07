@@ -12,13 +12,16 @@ class AlignSession::RenderJob : public juce::Thread
 public:
     struct Input
     {
-        std::shared_ptr<const AudioClip> source;
+        std::vector<std::shared_ptr<const AudioClip>> tracks;
+        RenderRange range;
         WarpMap warp;
         SessionSettings settings;
         std::vector<double> attacks;
     };
 
-    RenderJob (Input in, std::atomic<double>& progressOut, std::function<void (std::shared_ptr<const AudioClip>)> done)
+    using Results = std::vector<std::shared_ptr<const AudioClip>>;
+
+    RenderJob (Input in, std::atomic<double>& progressOut, std::function<void (Results)> done)
         : juce::Thread ("Align My Time render"), input (std::move (in)), progress (progressOut), onDone (std::move (done))
     {
     }
@@ -27,29 +30,36 @@ public:
 
     void run() override
     {
-        auto keepGoing = [this] (double p) {
-            progress.store (p);
-            return ! threadShouldExit();
-        };
+        // Every track gets the same warp, attacks and range, so the results stay sample-aligned.
+        Results results;
+        const auto numTracks = (double) input.tracks.size();
+        for (const auto& track : input.tracks)
+        {
+            const auto done = (double) results.size();
+            auto keepGoing = [this, done, numTracks] (double p) {
+                progress.store ((done + p) / numTracks);
+                return ! threadShouldExit();
+            };
 
-        const auto range = defaultRenderRange (*input.source, input.warp);
-        AudioClip result;
-        if (input.settings.method == AlignMethod::timeStretch)
-            result = renderTimeStretch (*input.source, input.warp, input.settings.quality, range, keepGoing, input.attacks);
-        else
-            result = renderSlices (*input.source, input.warp, input.settings.crossfadeMs / 1000.0, range, keepGoing);
+            AudioClip result;
+            if (input.settings.method == AlignMethod::timeStretch)
+                result = renderTimeStretch (*track, input.warp, input.settings.quality, input.range, keepGoing, input.attacks);
+            else
+                result = renderSlices (*track, input.warp, input.settings.crossfadeMs / 1000.0, input.range, keepGoing);
 
-        if (threadShouldExit())
-            return;
+            if (threadShouldExit())
+                return;
+            results.push_back (result.isEmpty() ? nullptr : std::make_shared<const AudioClip> (std::move (result)));
+        }
 
         progress.store (1.0);
-        onDone (result.isEmpty() ? nullptr : std::make_shared<const AudioClip> (std::move (result)));
+        onDone (std::move (results));
     }
 
 private:
     Input input;
     std::atomic<double>& progress;
-    std::function<void (std::shared_ptr<const AudioClip>)> onDone;
+    std::function<void (Results)> onDone;
 };
 
 //==============================================================================
@@ -66,8 +76,72 @@ AlignSession::~AlignSession()
 
 void AlignSession::setSource (std::shared_ptr<const AudioClip> clip, const juce::String& description)
 {
-    source = std::move (clip);
+    ownTrack = std::move (clip);
     sourceDescription = description;
+    rebuildSource();
+}
+
+void AlignSession::setExtraTrack (ExtraTrack track)
+{
+    auto existing = std::find_if (extraTracks.begin(), extraTracks.end(),
+                                  [&] (const ExtraTrack& t) { return t.kind == track.kind && t.id == track.id; });
+    if (existing != extraTracks.end())
+        *existing = std::move (track);
+    else
+        extraTracks.push_back (std::move (track));
+    rebuildSource();
+
+    // Audio of a restored extra track arrived after the own track was already re-rendered.
+    if (isReplaceActive() && canAlign())
+        startRender();
+}
+
+void AlignSession::removeExtraTrack (ExtraTrack::Kind kind, const juce::String& id)
+{
+    extraTracks.erase (std::remove_if (extraTracks.begin(), extraTracks.end(),
+                                       [&] (const ExtraTrack& t) { return t.kind == kind && t.id == id; }),
+                       extraTracks.end());
+    rebuildSource();
+}
+
+int AlignSession::getNumTracks() const
+{
+    int count = ownTrack != nullptr && ! ownTrack->isEmpty() ? 1 : 0;
+    for (const auto& t : extraTracks)
+        count += t.clip != nullptr && ! t.clip->isEmpty() ? 1 : 0;
+    return count;
+}
+
+void AlignSession::rebuildSource()
+{
+    std::vector<std::shared_ptr<const AudioClip>> clips;
+    if (ownTrack != nullptr && ! ownTrack->isEmpty())
+        clips.push_back (ownTrack);
+    for (const auto& t : extraTracks)
+        if (t.clip != nullptr && ! t.clip->isEmpty() && (clips.empty() || juce::approximatelyEqual (t.clip->sampleRate, clips.front()->sampleRate)))
+            clips.push_back (t.clip);
+
+    if (clips.size() <= 1)
+    {
+        source = clips.empty() ? ownTrack : clips.front();
+    }
+    else
+    {
+        // The sum of all tracks, as the band sounds: drums snap to kick, snare and overheads together.
+        int64_t start = clips.front()->startSample, end = clips.front()->endSample();
+        int channels = 1;
+        for (const auto& c : clips)
+        {
+            start = std::min (start, c->startSample);
+            end = std::max (end, c->endSample());
+            channels = std::max (channels, c->numChannels());
+        }
+        auto sum = std::make_shared<AudioClip> (channels, end - start, clips.front()->sampleRate, start);
+        for (const auto& c : clips)
+            sum->mixIn (*c);
+        source = std::move (sum);
+    }
+
     detector = hasSource() ? std::make_unique<OnsetDetector> (*source) : nullptr;
 
     // Re-snap restored or earlier markers against the new audio.
@@ -240,10 +314,10 @@ void AlignSession::nudgeSelected (double deltaSeconds)
     if (selectedMarker < 0)
         return;
 
-    // Nudging is precise by definition: no snapping afterwards.
+    // Nudging is precise by definition: no snapping afterwards. Starts from where the marker is shown.
     const bool snap = settings.snapToAttacks;
     settings.snapToAttacks = false;
-    moveMarker (selectedMarker, markers[(size_t) selectedMarker].seconds + deltaSeconds);
+    moveMarker (selectedMarker, straightenedMarkers[(size_t) selectedMarker].seconds + deltaSeconds);
     settings.snapToAttacks = snap;
 }
 
@@ -297,6 +371,18 @@ void AlignSession::setSnapToAttacks (bool shouldSnap)
     markChanged();
 }
 
+void AlignSession::setStraighten (double amount)
+{
+    updateSettings ([amount] (SessionSettings& s) { s.straighten = juce::jlimit (0.0, 1.0, amount); });
+}
+
+double AlignSession::getStraightenShift (int index) const
+{
+    if (! juce::isPositiveAndBelow (index, (int) markers.size()) || straightenedMarkers.size() != markers.size())
+        return 0.0;
+    return straightenedMarkers[(size_t) index].seconds - markers[(size_t) index].seconds;
+}
+
 //==============================================================================
 void AlignSession::updateSettings (const std::function<void (SessionSettings&)>& change)
 {
@@ -305,7 +391,7 @@ void AlignSession::updateSettings (const std::function<void (SessionSettings&)>&
 
     const bool affectsResult = before.tapUnit != settings.tapUnit || before.method != settings.method
                                || before.quality != settings.quality || ! juce::approximatelyEqual (before.crossfadeMs, settings.crossfadeMs)
-                               || before.firstBar != settings.firstBar;
+                               || before.firstBar != settings.firstBar || ! juce::approximatelyEqual (before.straighten, settings.straighten);
 
     if (before.manualTempo != settings.manualTempo || ! juce::approximatelyEqual (before.manualBpm, settings.manualBpm)
         || before.manualNumerator != settings.manualNumerator || before.manualDenominator != settings.manualDenominator)
@@ -336,6 +422,27 @@ void AlignSession::setStep (Step newStep)
 void AlignSession::markChanged (bool affectsResult)
 {
     plan = planAlignment (markers, projectTempo, settings.tapUnit, settings.firstBar);
+
+    straightenedMarkers = markers;
+    if (settings.straighten > 0.0 && markers.size() >= 4)
+    {
+        // Straighten along the grid the markers land on, then plan with the evened-out positions.
+        std::vector<double> grid;
+        for (size_t i = 0; i < markers.size(); ++i)
+            grid.push_back (gridQuarters (projectTempo, settings.tapUnit, plan.firstBar, (int) i));
+
+        // With snapping on, the audio's attacks guide the straightening as well (hitpoints).
+        std::vector<bool> onAttack;
+        const auto positions = straightenMarkers (markers, grid, settings.straighten, 4,
+                                                  settings.snapToAttacks ? detector.get() : nullptr, &onAttack);
+        for (size_t i = 0; i < markers.size(); ++i)
+        {
+            if (std::abs (positions[i] - markers[i].seconds) > 1.0e-9)
+                straightenedMarkers[i].snappedToAttack = onAttack[i];
+            straightenedMarkers[i].seconds = positions[i];
+        }
+        plan = planAlignment (straightenedMarkers, projectTempo, settings.tapUnit, plan.firstBar);
+    }
     tapUnitSuggestion = suggestTapUnit (plan, projectTempo, settings.tapUnit);
 
     if (affectsResult)
@@ -354,7 +461,15 @@ void AlignSession::startRender()
 
     cancelRender();
 
-    RenderJob::Input input { source, plan.warp, settings, {} };
+    RenderJob::Input input { {}, defaultRenderRange (*source, plan.warp), plan.warp, settings, {} };
+    std::vector<AlignedTrack> tracks;
+    if (ownTrack != nullptr && ! ownTrack->isEmpty())
+        tracks.push_back ({ {}, {}, ownTrack });
+    for (const auto& t : extraTracks)
+        if (t.clip != nullptr && ! t.clip->isEmpty() && juce::approximatelyEqual (t.clip->sampleRate, source->sampleRate))
+            tracks.push_back ({ t.id, t.name, t.clip });
+    for (const auto& t : tracks)
+        input.tracks.push_back (t.clip);
 
     if (settings.method == AlignMethod::timeStretch)
     {
@@ -374,12 +489,13 @@ void AlignSession::startRender()
     const int renderGeneration = generation;
     std::weak_ptr<bool> weakAlive = alive;
 
-    renderJob = std::make_unique<RenderJob> (std::move (input), renderProgress, [this, weakAlive, renderGeneration] (std::shared_ptr<const AudioClip> result) {
-        juce::MessageManager::callAsync ([this, weakAlive, renderGeneration, result] {
+    renderJob = std::make_unique<RenderJob> (std::move (input), renderProgress, [this, weakAlive, renderGeneration] (RenderJob::Results results) {
+        juce::MessageManager::callAsync ([this, weakAlive, renderGeneration, results] {
             if (auto a = weakAlive.lock(); a != nullptr && *a)
-                finishRender (result, renderGeneration);
+                finishRender (results, renderGeneration);
         });
     });
+    renderingTracks = std::move (tracks);
     renderJob->startThread();
     sendChangeMessage();
 }
@@ -390,19 +506,38 @@ void AlignSession::cancelRender()
     sendChangeMessage();
 }
 
-void AlignSession::finishRender (std::shared_ptr<const AudioClip> result, int renderGeneration)
+void AlignSession::finishRender (std::vector<std::shared_ptr<const AudioClip>> results, int renderGeneration)
 {
     renderJob.reset();
 
-    if (result != nullptr)
+    const bool complete = ! results.empty() && results.size() == renderingTracks.size()
+                          && std::all_of (results.begin(), results.end(), [] (const auto& r) { return r != nullptr; });
+    if (complete)
     {
-        alignedForUi = result;
+        alignedTracks = renderingTracks;
+        for (size_t i = 0; i < results.size(); ++i)
+            alignedTracks[i].clip = results[i];
+
+        if (results.size() == 1)
+        {
+            alignedForUi = results.front();
+        }
+        else
+        {
+            // All results share start and length (same warp and range).
+            auto sum = std::make_shared<AudioClip> (results.front()->numChannels(), results.front()->numSamples(),
+                                                    results.front()->sampleRate, results.front()->startSample);
+            for (const auto& r : results)
+                sum->mixIn (*r);
+            alignedForUi = std::move (sum);
+        }
         alignedUpToDate = renderGeneration == generation;
 
         if (restoredReplaceActive || isReplaceActive())
         {
             restoredReplaceActive = false;
-            replacement.set (result);
+            setReplaceActive (true);
+            return;
         }
     }
 
@@ -411,7 +546,11 @@ void AlignSession::finishRender (std::shared_ptr<const AudioClip> result, int re
 
 void AlignSession::setReplaceActive (bool active)
 {
-    replacement.set (active ? alignedForUi : nullptr);
+    replaceActive = active && ! alignedTracks.empty();
+    const bool ownTrackRendered = replaceActive && alignedTracks.front().id.isEmpty();
+    replacement.set (ownTrackRendered ? alignedTracks.front().clip : nullptr);
+    if (onReplacementChanged)
+        onReplacementChanged();
     sendChangeMessage();
 }
 
@@ -421,9 +560,10 @@ namespace ids
     static const juce::Identifier root ("AlignMyTime"), markers ("Markers"), marker ("Marker"), seconds ("seconds"),
         tapped ("tapped"), origin ("origin"), snapped ("snapped"), tapMode ("tapMode"), tapUnit ("tapUnit"), manualTempo ("manualTempo"), manualBpm ("manualBpm"),
         manualNumerator ("manualNumerator"), manualDenominator ("manualDenominator"), clickBlend ("clickBlend"), method ("method"), quality ("quality"),
-        crossfade ("crossfadeMs"), snap ("snapToAttacks"), leadIn ("leadIn"), click ("clickInPreview"), tapOffset ("tapOffsetMs"),
+        crossfade ("crossfadeMs"), snap ("snapToAttacks"), straighten ("straighten"), leadIn ("leadIn"), click ("clickInPreview"), tapOffset ("tapOffsetMs"),
         destination ("destination"), fromStart ("exportFromProjectStart"), muteOriginal ("muteOriginal"), firstBar ("firstBar"),
-        trackName ("trackName"), step ("step"), replace ("replaceActive"), version ("version");
+        trackName ("trackName"), step ("step"), replace ("replaceActive"), version ("version"),
+        extraTracks ("ExtraTracks"), extraTrack ("ExtraTrack"), kind ("kind"), id ("id"), name ("name");
 }
 
 juce::ValueTree AlignSession::toValueTree() const
@@ -440,6 +580,7 @@ juce::ValueTree AlignSession::toValueTree() const
     tree.setProperty (ids::quality, (int) settings.quality, nullptr);
     tree.setProperty (ids::crossfade, settings.crossfadeMs, nullptr);
     tree.setProperty (ids::snap, settings.snapToAttacks, nullptr);
+    tree.setProperty (ids::straighten, settings.straighten, nullptr);
     tree.setProperty (ids::leadIn, settings.leadIn, nullptr);
     tree.setProperty (ids::click, settings.clickInPreview, nullptr);
     tree.setProperty (ids::tapOffset, settings.tapOffsetMs, nullptr);
@@ -462,6 +603,18 @@ juce::ValueTree AlignSession::toValueTree() const
         markerList.appendChild (node, nullptr);
     }
     tree.appendChild (markerList, nullptr);
+
+    // Only the references: the audio comes from the files or the host again.
+    juce::ValueTree trackList (ids::extraTracks);
+    for (const auto& t : extraTracks)
+    {
+        juce::ValueTree node (ids::extraTrack);
+        node.setProperty (ids::kind, (int) t.kind, nullptr);
+        node.setProperty (ids::id, t.id, nullptr);
+        node.setProperty (ids::name, t.name, nullptr);
+        trackList.appendChild (node, nullptr);
+    }
+    tree.appendChild (trackList, nullptr);
     return tree;
 }
 
@@ -482,6 +635,7 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
     settings.quality = (StretchQuality) (int) tree.getProperty (ids::quality, 0);
     settings.crossfadeMs = tree.getProperty (ids::crossfade, 10.0);
     settings.snapToAttacks = tree.getProperty (ids::snap, true);
+    settings.straighten = juce::jlimit (0.0, 1.0, (double) tree.getProperty (ids::straighten, 0.0));
     settings.leadIn = tree.getProperty (ids::leadIn, true);
     settings.clickInPreview = tree.getProperty (ids::click, true);
     settings.tapOffsetMs = tree.getProperty (ids::tapOffset, 0.0);
@@ -498,6 +652,11 @@ void AlignSession::restoreFromValueTree (const juce::ValueTree& tree)
     for (const auto& node : tree.getChildWithName (ids::markers))
         markers.push_back ({ node.getProperty (ids::seconds), node.getProperty (ids::tapped),
                              (MarkerOrigin) (int) node.getProperty (ids::origin, 0), node.getProperty (ids::snapped, false) });
+
+    extraTracks.clear();
+    for (const auto& node : tree.getChildWithName (ids::extraTracks))
+        extraTracks.push_back ({ (ExtraTrack::Kind) juce::jlimit (0, 1, (int) node.getProperty (ids::kind, 0)),
+                                 node.getProperty (ids::id).toString(), node.getProperty (ids::name).toString(), nullptr });
 
     fixedMarkers = markers;
     liveTaps.clear();

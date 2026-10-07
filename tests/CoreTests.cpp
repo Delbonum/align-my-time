@@ -190,6 +190,86 @@ void testTapCleanup()
     CHECK (filled == 2);
 }
 
+void testStraighten()
+{
+    // A gentle ritardando (0.50 s -> 0.58 s per beat) with small human jitter and one tap 60 ms late.
+    std::vector<amt::Marker> markers;
+    std::vector<double> truth, grid;
+    double t = 1.0;
+    for (int i = 0; i < 24; ++i)
+    {
+        truth.push_back (t);
+        grid.push_back ((double) i);
+        const double jitter = (i % 2 == 0 ? 0.004 : -0.004);
+        const double sloppy = i == 11 ? 0.06 : 0.0;
+        markers.push_back ({ t + jitter + sloppy, t + jitter + sloppy, amt::MarkerOrigin::tapped, false });
+        t += 0.5 + 0.08 * i / 23.0;
+    }
+
+    // 0 % changes nothing.
+    const auto none = amt::straightenMarkers (markers, grid, 0.0);
+    for (size_t i = 0; i < markers.size(); ++i)
+        CHECK_NEAR (none[i], markers[i].seconds, 1.0e-12);
+
+    // 100 %: the late tap is pulled back, its neighbours are hardly disturbed, the ritardando stays.
+    const auto full = amt::straightenMarkers (markers, grid, 1.0);
+    CHECK_NEAR (full[11], truth[11], 0.008);
+    CHECK_NEAR (full[10], truth[10], 0.008);
+    CHECK_NEAR (full[12], truth[12], 0.008);
+    CHECK_NEAR (full.back(), truth.back(), 0.01);
+    for (size_t i = 1; i < full.size(); ++i)
+        CHECK (full[i] > full[i - 1]);
+
+    // 50 % goes half the way.
+    const auto half = amt::straightenMarkers (markers, grid, 0.5);
+    CHECK_NEAR (half[11], 0.5 * (markers[11].seconds + full[11]), 1.0e-9);
+
+    // Hand-placed markers stay where they are.
+    markers[11].origin = amt::MarkerOrigin::manual;
+    CHECK_NEAR (amt::straightenMarkers (markers, grid, 1.0)[11], markers[11].seconds, 1.0e-12);
+
+    // Uneven grid steps (e.g. a 3/4 bar between 4/4 bars) are not "straightened" away.
+    std::vector<amt::Marker> bars;
+    std::vector<double> quarters { 0.0, 4.0, 8.0, 11.0, 15.0, 19.0, 23.0 };
+    for (auto q : quarters)
+        bars.push_back ({ 2.0 + 0.5 * q, 2.0 + 0.5 * q, amt::MarkerOrigin::tapped, false });
+    const auto evenBars = amt::straightenMarkers (bars, quarters, 1.0);
+    for (size_t i = 0; i < bars.size(); ++i)
+        CHECK_NEAR (evenBars[i], bars[i].seconds, 1.0e-6);
+}
+
+void testStraightenOntoAttacks()
+{
+    auto take = makeDriftingTake();
+    amt::OnsetDetector detector (take.clip);
+
+    std::vector<amt::Marker> markers;
+    std::vector<double> grid;
+    for (size_t i = 0; i < take.downbeats.size(); ++i)
+    {
+        markers.push_back ({ take.downbeats[i], take.downbeats[i], amt::MarkerOrigin::tapped, true });
+        grid.push_back (4.0 * (double) i);
+    }
+
+    // Tapped 90 ms late, beyond the snapping window: no attack found.
+    markers[4].seconds = markers[4].tappedSeconds = take.downbeats[4] + 0.09;
+    markers[4].snappedToAttack = false;
+    // Caught on the wrong attack: the second beat of the bar.
+    markers[8].seconds = take.onsets[8 * 4 + 1];
+
+    std::vector<bool> onAttack;
+    const auto result = amt::straightenMarkers (markers, grid, 1.0, 4, &detector, &onAttack);
+    CHECK_NEAR (result[4], take.downbeats[4], 0.002);
+    CHECK_NEAR (result[8], take.downbeats[8], 0.002);
+    CHECK (onAttack[4] && onAttack[8]);
+    for (size_t i = 0; i < result.size(); ++i)
+        CHECK_NEAR (result[i], take.downbeats[i], 0.002);
+
+    // Halfway is still half the way, now towards the attack.
+    const auto half = amt::straightenMarkers (markers, grid, 0.5, 4, &detector);
+    CHECK_NEAR (half[4], 0.5 * (markers[4].seconds + result[4]), 1.0e-9);
+}
+
 void testOnsetSnapping()
 {
     auto take = makeDriftingTake();
@@ -369,6 +449,8 @@ int main()
         { "tempo map", testTempoMap },
         { "warp map", testWarpMap },
         { "tap clean-up", testTapCleanup },
+        { "straighten markers", testStraighten },
+        { "straighten onto attacks", testStraightenOntoAttacks },
         { "onset snapping", testOnsetSnapping },
         { "alignment plan", testPlan },
         { "time-stretch alignment", testTimeStretchAlignment },

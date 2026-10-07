@@ -38,6 +38,24 @@ Ein Plugin kann in Cubase keine Spuren anlegen. Deshalb:
 - **Sprache:** Deutsch und Englisch, umschaltbar ohne Neustart. Gespeichert pro Rechner (nicht pro Projekt).
 - **Version:** Semantic Versioning, sichtbar unter Einstellungen › Credits, Historie in `CHANGELOG.md`.
 
+## 6. Taps begradigen und Mehrspur (ab 1.3.0)
+
+**Begradigen** ist eine Einstellung, keine Aktion. Die getappten (und eingerasteten) Marker bleiben unverändert gespeichert. Angepasst wird mit den begradigten Positionen, und „Aus“ stellt jederzeit den Originalzustand her.
+
+- **Verfahren:** Für jeden Marker sagt eine Ausgleichskurve durch seine Nachbarn (±4 Marker, er selbst zählt nicht mit) voraus, wo er liegen müsste. In der Mitte ist das eine Parabel, damit ein Ritardando nicht „hinterherhinkt“, an den Rändern eine Gerade. Nahe Nachbarn zählen mehr, und in einem zweiten Durchgang werden klare Ausreißer ignoriert (robuste Regression). Ein einzelner schlechter Tap verbiegt die Kurve also nicht. Der Marker wandert um die gewählte Stärke (25–100 %) in Richtung dieser Vorhersage.
+- **Gemessen wird auf dem Projektraster** (in Viertelnoten, nicht in „Marker Nr.“). Ein 3/4-Takt zwischen 4/4-Takten wird deshalb nicht „wegbegradigt“.
+- **Von Hand gesetzte Marker** bleiben, wo sie sind, und dienen ihren Nachbarn als verlässliche Stützstellen.
+- **Hitpoints** (wenn „An Transienten einrasten“ an ist): Ein Marker auf einem Anschlag, der zur Kurve passt, bleibt dort. Der Anschlag ist der tatsächliche Schlag und damit ein besserer Beleg als jede Kurve. Marker ohne Anschlag und klare Ausreißer (z. B. auf einer Ghost-Note oder einem Flam eingerastet) zielen auf den deutlichsten Anschlag nahe der vorhergesagten Position, sonst auf die Kurve. Das Suchfenster ist ein Achtel des Markerabstands (höchstens 25 ms), damit eine benachbarte 16tel nicht für den Schlag gehalten wird. Marker auf einem Anschlag zählen bei der Kurve doppelt so viel wie Marker ohne. Wer den Groove bewusst glätten will, schaltet das Einrasten aus.
+- **Stufenloser Regler** statt fester Stufen: Beim Ziehen sieht man live, wie Marker und Tempokurve wandern.
+- 100 % heißt: Die Marker liegen auf dem gleichmäßigen Tempoverlauf. Was der Musiker gegenüber diesem Verlauf vor- oder zurückliegt, bleibt dann im Ergebnis erhalten. Das ist bewusst so, denn das ist der Groove, nicht der Tap-Fehler.
+
+**Mehrspur:** Alle Spuren teilen sich Marker und Warp-Map. Gerendert wird jede Spur einzeln mit derselben Warp-Map, denselben geschützten Anschlägen und demselben Bereich. Die Ergebnisse sind deshalb gleich lang und beginnen am selben Sample.
+
+- Getappt, eingerastet und vorgehört wird auf der **Summe** aller Spuren. Bei Schlagzeug rasten die Marker so auf Kick, Snare und Overheads zugleich ein.
+- **Schneiden + Verschieben** ist sample-genau phasengleich, weil es nur verschiebt und überblendet. Time-Stretch ist es an den geschützten Anschlägen (die bei allen Spuren identisch sind). Dazwischen arbeitet der Phase-Vocoder je Spur, was bei stark übersprechenden Mikrofonen minimal abweichen kann.
+- **Mit ARA** sieht das Plugin nur Spuren, auf denen Align My Time als ARA-Erweiterung läuft. Die Instanz, in der getappt wird, „leitet“. Sie veröffentlicht über den gemeinsamen ARA-Document-Controller die angepasste Version jeder verknüpften Spur, und die Instanz auf dieser Spur spielt sie bei „In dieser Spur ersetzen“ ab. Gespeichert wird die Verknüpfung über den Spurnamen (ARA kennt keine dauerhafte Spur-ID). Wird eine Spur umbenannt, muss man sie neu ankreuzen.
+- **Ohne ARA** (Insert-Modus) kann ein Plugin die anderen Spuren nicht sehen. Dort kommen weitere Spuren als Audiodateien dazu. Sie gibt es nur als neue Spur, nicht als „ersetzen“.
+
 ## Weitere Entscheidungen
 
 | Thema | Entscheidung | Warum |
@@ -56,7 +74,7 @@ Ein Plugin kann in Cubase keine Spuren anlegen. Deshalb:
 
 ## Offen / nächste Schritte
 
-- **Test in Cubase:** Bisher wurde nur unter Linux gebaut und ohne DAW getestet (simulierter Host). Windows- und macOS-Builds erzeugt die CI. Das ARA-Verhalten in Cubase muss noch praktisch geprüft werden.
+- **Test in Cubase:** Bisher wurde nur unter Linux gebaut und ohne DAW getestet (simulierter Host). Windows- und macOS-Builds erzeugt die CI. Das ARA-Verhalten in Cubase muss noch praktisch geprüft werden. Das gilt besonders für die Mehrspur-Verknüpfung über ARA (1.3.0), die der simulierte Host nicht abdeckt.
 - **Leertaste in Cubase:** Während Cubase spielt und das Plugin den Fokus hat, tappt die Leertaste; gestoppt wird dann über Cubase (Klick ins Projekt oder Transportfeld). Eventuell ist zusätzlich eine frei belegbare Tap-Taste sinnvoll.
 - **Tap-Latenz kalibrieren:** Die Einstellung `tapOffsetMs` existiert, ist aber noch nicht in der Oberfläche. Das Einrasten auf Anschläge fängt den Versatz in der Praxis meist ab.
 - **Ohne ARA:** Ein Offline-Export schneller als Echtzeit kann bei der Aufnahme Blöcke verlieren. Deshalb in Echtzeit abspielen.

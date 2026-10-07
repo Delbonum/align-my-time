@@ -50,6 +50,56 @@ namespace
             std::copy (buffer.getReadPointer (c), buffer.getReadPointer (c) + buffer.getNumSamples(), clip->channels[(size_t) c].begin());
         return clip;
     }
+
+    /** Reads an audio file on a background thread, resampled to the session's rate. */
+    struct FileLoader : juce::Thread
+    {
+        FileLoader (juce::File f, double r, int c, std::function<void (std::shared_ptr<AudioClip>, juce::String)> done)
+            : juce::Thread ("Align My Time file loader"), file (std::move (f)), rate (r), channels (c), onDone (std::move (done)) {}
+
+        void run() override
+        {
+            juce::AudioFormatManager formats;
+            formats.registerBasicFormats();
+            std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+            if (reader == nullptr || reader->lengthInSamples <= 0)
+            {
+                onDone (nullptr, tr ("Diese Datei kann nicht gelesen werden: ") + file.getFileName());
+                return;
+            }
+
+            const int length = (int) juce::jmin<juce::int64> (reader->lengthInSamples, std::numeric_limits<int>::max() / 2);
+            juce::AudioBuffer<float> buffer ((int) juce::jmax (1u, reader->numChannels), length);
+            reader->read (&buffer, 0, length, 0, true, true);
+            if (threadShouldExit())
+                return;
+
+            if (! juce::approximatelyEqual (reader->sampleRate, rate))
+            {
+                const int outLength = (int) std::llround (length * rate / reader->sampleRate);
+                juce::AudioBuffer<float> resampled (buffer.getNumChannels(), outLength);
+                for (int c = 0; c < buffer.getNumChannels(); ++c)
+                {
+                    juce::LagrangeInterpolator interpolator;
+                    interpolator.process (reader->sampleRate / rate, buffer.getReadPointer (c), resampled.getWritePointer (c), outLength);
+                }
+                buffer = std::move (resampled);
+            }
+
+            auto clip = std::make_shared<AudioClip> (channels, buffer.getNumSamples(), rate, 0);
+            for (int c = 0; c < channels; ++c)
+            {
+                const auto* src = buffer.getReadPointer (juce::jmin (c, buffer.getNumChannels() - 1));
+                std::copy (src, src + buffer.getNumSamples(), clip->channels[(size_t) c].begin());
+            }
+            onDone (clip, {});
+        }
+
+        juce::File file;
+        double rate;
+        int channels;
+        std::function<void (std::shared_ptr<AudioClip>, juce::String)> onDone;
+    };
 }
 
 //==============================================================================
@@ -58,6 +108,7 @@ AlignMyTimeProcessor::AlignMyTimeProcessor()
                                 .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                                 .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
+    session.onReplacementChanged = [this] { publishLinkedTracks(); };
     startTimerHz (30);
 }
 
@@ -67,7 +118,14 @@ AlignMyTimeProcessor::~AlignMyTimeProcessor()
     *alive = false;
     if (fileLoader != nullptr)
         fileLoader->stopThread (5000);
+    for (auto& [id, extraLoader] : extraFileLoaders)
+        extraLoader->stopThread (5000);
+    hostTrackLoaders.clear();
     loader.reset();
+
+    // The linked tracks go back to their own audio.
+    if (auto* controller = documentController.get())
+        controller->releaseLinks (this);
 }
 
 void AlignMyTimeProcessor::didBindToARA() noexcept
@@ -76,6 +134,10 @@ void AlignMyTimeProcessor::didBindToARA() noexcept
 
     if (auto* renderer = getPlaybackRenderer<PlaybackRenderer>())
         renderer->setReplacementSource (&session.getReplacementSlot());
+    if (auto* renderer = getPlaybackRenderer())
+        documentController = DocumentController::of (renderer->getDocumentController());
+    else if (auto* editorRenderer = getEditorRenderer())
+        documentController = DocumentController::of (editorRenderer->getDocumentController());
 
     // Load the track as soon as the host has told us about it.
     juce::MessageManager::callAsync ([safe = juce::WeakReference<AlignMyTimeProcessor> (this)] {
@@ -89,10 +151,16 @@ void AlignMyTimeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     // A loaded file must match the playback rate (the standalone app may change devices).
     const bool rateChanged = ! juce::approximatelyEqual (currentSampleRate, sampleRate);
     currentSampleRate = sampleRate;
-    if (rateChanged && isUsingAudioFile())
+    if (rateChanged)
         juce::MessageManager::callAsync ([safe = juce::WeakReference<AlignMyTimeProcessor> (this)] {
-            if (auto* p = safe.get())
+            auto* p = safe.get();
+            if (p == nullptr)
+                return;
+            if (p->isUsingAudioFile())
                 p->loadAudioFile (p->sourceFile);
+            for (const auto& track : p->session.getExtraTracks())
+                if (track.kind == ExtraTrack::Kind::file)
+                    p->loadExtraTrack (track);
         });
 
     preview.prepare (sampleRate);
@@ -229,10 +297,13 @@ void AlignMyTimeProcessor::timerCallback()
     {
         // The host may hand over the events (or enable sample access) only after binding:
         // keep trying quietly once a second until the track is there.
-        if (! session.hasSource() && ! isUsingAudioFile() && loader == nullptr && ++araRetryTicks >= 30)
+        if (++araRetryTicks >= 30)
         {
             araRetryTicks = 0;
-            reloadTrack();
+            if (session.getOwnTrack() == nullptr && ! isUsingAudioFile() && loader == nullptr)
+                reloadTrack();
+            else
+                loadMissingExtraTracks();
         }
         return;
     }
@@ -279,7 +350,7 @@ void AlignMyTimeProcessor::loadFromRecorder()
 
     // Merge with what was recorded before: the new pass wins where they overlap.
     auto merged = std::make_shared<AudioClip> (recorded);
-    if (auto previous = session.getSource(); previous != nullptr && juce::approximatelyEqual (previous->sampleRate, recorded.sampleRate))
+    if (auto previous = session.getOwnTrack(); previous != nullptr && juce::approximatelyEqual (previous->sampleRate, recorded.sampleRate))
     {
         const auto start = std::min<int64_t> (previous->startSample, recorded.startSample);
         const auto end = std::max<int64_t> (previous->endSample(), recorded.endSample());
@@ -345,6 +416,10 @@ void AlignMyTimeProcessor::reloadTrack()
         if (auto* editorRenderer = getEditorRenderer())
             regions = editorRenderer->getPlaybackRegions();
 
+    for (const auto& track : session.getExtraTracks())
+        if (track.kind == ExtraTrack::Kind::hostTrack)
+            loadExtraTrack (track);
+
     loader = std::make_unique<TrackLoader> (regions, currentSampleRate, juce::jmax (1, getMainBusNumOutputChannels()),
                                             [this] (TrackLoader::Result result) {
                                                 auto finished = std::move (loader);
@@ -380,56 +455,7 @@ void AlignMyTimeProcessor::loadAudioFile (const juce::File& file)
     const int channels = juce::jmax (1, getMainBusNumOutputChannels());
     std::weak_ptr<bool> weakAlive = alive;
 
-    struct Loader : juce::Thread
-    {
-        Loader (juce::File f, double r, int c, std::function<void (std::shared_ptr<AudioClip>, juce::String)> done)
-            : juce::Thread ("Align My Time file loader"), file (std::move (f)), rate (r), channels (c), onDone (std::move (done)) {}
-
-        void run() override
-        {
-            juce::AudioFormatManager formats;
-            formats.registerBasicFormats();
-            std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
-            if (reader == nullptr || reader->lengthInSamples <= 0)
-            {
-                onDone (nullptr, tr ("Diese Datei kann nicht gelesen werden: ") + file.getFileName());
-                return;
-            }
-
-            const int length = (int) juce::jmin<juce::int64> (reader->lengthInSamples, std::numeric_limits<int>::max() / 2);
-            juce::AudioBuffer<float> buffer ((int) juce::jmax (1u, reader->numChannels), length);
-            reader->read (&buffer, 0, length, 0, true, true);
-            if (threadShouldExit())
-                return;
-
-            if (! juce::approximatelyEqual (reader->sampleRate, rate))
-            {
-                const int outLength = (int) std::llround (length * rate / reader->sampleRate);
-                juce::AudioBuffer<float> resampled (buffer.getNumChannels(), outLength);
-                for (int c = 0; c < buffer.getNumChannels(); ++c)
-                {
-                    juce::LagrangeInterpolator interpolator;
-                    interpolator.process (reader->sampleRate / rate, buffer.getReadPointer (c), resampled.getWritePointer (c), outLength);
-                }
-                buffer = std::move (resampled);
-            }
-
-            auto clip = std::make_shared<AudioClip> (channels, buffer.getNumSamples(), rate, 0);
-            for (int c = 0; c < channels; ++c)
-            {
-                const auto* src = buffer.getReadPointer (juce::jmin (c, buffer.getNumChannels() - 1));
-                std::copy (src, src + buffer.getNumSamples(), clip->channels[(size_t) c].begin());
-            }
-            onDone (clip, {});
-        }
-
-        juce::File file;
-        double rate;
-        int channels;
-        std::function<void (std::shared_ptr<AudioClip>, juce::String)> onDone;
-    };
-
-    fileLoader = std::make_unique<Loader> (file, rate, channels, [this, weakAlive, file] (std::shared_ptr<AudioClip> clip, juce::String error) {
+    fileLoader = std::make_unique<FileLoader> (file, rate, channels, [this, weakAlive, file] (std::shared_ptr<AudioClip> clip, juce::String error) {
         juce::MessageManager::callAsync ([this, weakAlive, file, clip, error] {
             if (auto a = weakAlive.lock(); a == nullptr || ! *a)
                 return;
@@ -494,6 +520,237 @@ void AlignMyTimeProcessor::stopPreview()
 }
 
 //==============================================================================
+void AlignMyTimeProcessor::addExtraFiles (const juce::Array<juce::File>& files)
+{
+    int first = 0;
+    if (session.getOwnTrack() == nullptr && fileLoader == nullptr && ! files.isEmpty() && (isStandalone() || ! isBoundToARA()))
+        loadAudioFile (files[first++]);
+
+    for (int i = first; i < files.size(); ++i)
+    {
+        ExtraTrack track { ExtraTrack::Kind::file, files[i].getFullPathName(), files[i].getFileNameWithoutExtension(), nullptr };
+        session.setExtraTrack (track);
+        loadExtraTrack (track);
+    }
+}
+
+void AlignMyTimeProcessor::removeExtraTrack (ExtraTrack::Kind kind, const juce::String& id)
+{
+    if (kind == ExtraTrack::Kind::file)
+        extraFileLoaders.erase (id);
+    else
+        hostTrackLoaders.erase (id);
+
+    session.removeExtraTrack (kind, id);
+    publishLinkedTracks();
+}
+
+void AlignMyTimeProcessor::loadExtraTrack (const ExtraTrack& track)
+{
+    std::weak_ptr<bool> weakAlive = alive;
+    const auto id = track.id;
+    const auto name = track.name;
+
+    if (track.kind == ExtraTrack::Kind::file)
+    {
+        auto finished = [this, weakAlive, id, name] (std::shared_ptr<AudioClip> clip, juce::String error) {
+            juce::MessageManager::callAsync ([this, weakAlive, id, name, clip, error] {
+                if (auto a = weakAlive.lock(); a == nullptr || ! *a)
+                    return;
+                auto it = extraFileLoaders.find (id);
+                if (it == extraFileLoaders.end())
+                    return; // removed meanwhile
+                it->second->stopThread (1000);
+                extraFileLoaders.erase (it);
+
+                if (clip == nullptr)
+                {
+                    loadError = error;
+                    session.removeExtraTrack (ExtraTrack::Kind::file, id);
+                    return;
+                }
+                session.setExtraTrack ({ ExtraTrack::Kind::file, id, name, clip });
+            });
+        };
+
+        auto& slot = extraFileLoaders[id];
+        if (slot != nullptr)
+            slot->stopThread (5000);
+        slot = std::make_unique<FileLoader> (juce::File (id), currentSampleRate, juce::jmax (1, getMainBusNumOutputChannels()), finished);
+        slot->startThread();
+        return;
+    }
+
+    auto* hostTrack = findHostTrack (id);
+    if (hostTrack == nullptr)
+        return; // not (yet) in the ARA document: tried again by the timer
+
+    hostTrackLoaders[id] = std::make_unique<TrackLoader> (hostTrack->getPlaybackRegions<juce::ARAPlaybackRegion>(), currentSampleRate,
+                                                          juce::jmax (1, getMainBusNumOutputChannels()),
+                                                          [this, id] (TrackLoader::Result result) {
+                                                              auto finished = std::move (hostTrackLoaders[id]);
+                                                              hostTrackLoaders.erase (id);
+                                                              const auto& tracks = session.getExtraTracks();
+                                                              const auto stillLinked = std::any_of (tracks.begin(), tracks.end(), [&] (const ExtraTrack& t) {
+                                                                  return t.kind == ExtraTrack::Kind::hostTrack && t.id == id;
+                                                              });
+                                                              if (! stillLinked || result.clip == nullptr)
+                                                                  return;
+                                                              auto* loaded = findHostTrack (id);
+                                                              session.setExtraTrack ({ ExtraTrack::Kind::hostTrack, id,
+                                                                                       loaded != nullptr ? hostTrackName (loaded) : id, result.clip });
+                                                              publishLinkedTracks();
+                                                          });
+}
+
+void AlignMyTimeProcessor::loadMissingExtraTracks()
+{
+    for (const auto& track : session.getExtraTracks())
+    {
+        if (track.clip != nullptr)
+            continue;
+        if (track.kind == ExtraTrack::Kind::file && extraFileLoaders.count (track.id) == 0)
+        {
+            if (juce::File (track.id).existsAsFile())
+                loadExtraTrack (track);
+        }
+        else if (track.kind == ExtraTrack::Kind::hostTrack && isBoundToARA() && hostTrackLoaders.count (track.id) == 0)
+        {
+            loadExtraTrack (track);
+        }
+    }
+}
+
+juce::ARARegionSequence* AlignMyTimeProcessor::getOwnHostTrack() const
+{
+    if (auto* renderer = getPlaybackRenderer<PlaybackRenderer>())
+        if (auto* track = renderer->getTrack())
+            return track;
+    if (auto* editorRenderer = getEditorRenderer())
+        for (auto* region : editorRenderer->getPlaybackRegions())
+            if (auto* track = region->getRegionSequence())
+                return track;
+    return nullptr;
+}
+
+std::vector<juce::ARARegionSequence*> AlignMyTimeProcessor::getOtherHostTracks() const
+{
+    std::vector<juce::ARARegionSequence*> tracks;
+    auto* controller = documentController.get();
+    if (controller == nullptr || ! isBoundToARA())
+        return tracks;
+
+    // Only tracks Align My Time is active on are part of the ARA document.
+    auto* own = getOwnHostTrack();
+    for (auto* track : controller->getDocument<juce::ARADocument>()->getRegionSequences<juce::ARARegionSequence>())
+        if (track != own && ! track->getPlaybackRegions().empty())
+            tracks.push_back (track);
+    return tracks;
+}
+
+juce::String AlignMyTimeProcessor::hostTrackName (juce::ARARegionSequence* track)
+{
+    if (track->getName() != nullptr && *track->getName() != 0)
+        return juce::String::fromUTF8 (track->getName());
+    return tr ("Spur") + " " + juce::String (track->getOrderIndex() + 1);
+}
+
+juce::String AlignMyTimeProcessor::hostTrackId (juce::ARARegionSequence* track)
+{
+    // ARA has no persistent id for tracks; the name survives saving and reloading the project.
+    return hostTrackName (track);
+}
+
+juce::ARARegionSequence* AlignMyTimeProcessor::findHostTrack (const juce::String& id) const
+{
+    for (auto* track : getOtherHostTracks())
+        if (hostTrackId (track) == id)
+            return track;
+    return nullptr;
+}
+
+std::vector<AlignMyTimeProcessor::HostTrack> AlignMyTimeProcessor::getHostTracks() const
+{
+    std::vector<HostTrack> result;
+    auto* controller = documentController.get();
+    for (auto* track : getOtherHostTracks())
+    {
+        HostTrack info { hostTrackId (track), hostTrackName (track), false, {} };
+        for (const auto& t : session.getExtraTracks())
+            info.linked = info.linked || (t.kind == ExtraTrack::Kind::hostTrack && t.id == info.id);
+        if (! info.linked && controller != nullptr)
+            info.linkedElsewhere = controller->getLinkOwnerName (track);
+        result.push_back (info);
+    }
+    return result;
+}
+
+void AlignMyTimeProcessor::setHostTrackLinked (const juce::String& id, bool shouldBeLinked)
+{
+    if (! shouldBeLinked)
+    {
+        removeExtraTrack (ExtraTrack::Kind::hostTrack, id);
+        return;
+    }
+
+    auto* track = findHostTrack (id);
+    if (track == nullptr)
+        return;
+    ExtraTrack extra { ExtraTrack::Kind::hostTrack, id, hostTrackName (track), nullptr };
+    session.setExtraTrack (extra);
+    loadExtraTrack (extra);
+    publishLinkedTracks();
+}
+
+juce::String AlignMyTimeProcessor::getLinkedByName() const
+{
+    auto* controller = documentController.get();
+    auto* own = getOwnHostTrack();
+    return controller != nullptr && own != nullptr ? controller->getLinkOwnerName (own) : juce::String();
+}
+
+juce::String AlignMyTimeProcessor::getOwnTrackName() const
+{
+    if (isUsingAudioFile())
+        return sourceFile.getFileNameWithoutExtension();
+    if (auto* own = getOwnHostTrack())
+        return hostTrackName (own);
+    return tr ("Aufnahme");
+}
+
+void AlignMyTimeProcessor::publishLinkedTracks()
+{
+    auto* controller = documentController.get();
+    if (controller == nullptr)
+        return;
+
+    auto* own = getOwnHostTrack();
+    const auto ownName = own != nullptr ? hostTrackName (own) : tr ("Spur");
+    std::vector<const juce::ARARegionSequence*> linked;
+
+    for (const auto& extra : session.getExtraTracks())
+    {
+        if (extra.kind != ExtraTrack::Kind::hostTrack)
+            continue;
+        auto* track = findHostTrack (extra.id);
+        if (track == nullptr)
+            continue;
+
+        linked.push_back (track);
+        controller->setLinkOwner (track, this, ownName);
+
+        std::shared_ptr<const AudioClip> aligned;
+        if (session.isReplaceActive())
+            for (const auto& a : session.getAlignedTracks())
+                if (a.id == extra.id)
+                    aligned = a.clip;
+        controller->getLinkedReplacement (track).set (aligned);
+    }
+
+    controller->releaseLinks (this, linked);
+}
+
+//==============================================================================
 void AlignMyTimeProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto tree = session.toValueTree();
@@ -502,16 +759,16 @@ void AlignMyTimeProcessor::getStateInformation (juce::MemoryBlock& destData)
         tree.setProperty ("audioFile", sourceFile.getFullPathName(), nullptr);
 
     // Without ARA the recorded audio is not in the project: keep it next to it.
-    if (! isBoundToARA() && session.hasSource() && ! isUsingAudioFile())
+    if (! isBoundToARA() && session.getOwnTrack() != nullptr && ! isUsingAudioFile())
     {
-        if (capturedClip != session.getSource().get() || ! captureFile.existsAsFile())
+        if (capturedClip != session.getOwnTrack().get() || ! captureFile.existsAsFile())
         {
             captureFile = captureFolder().getChildFile (juce::Uuid().toString() + ".wav");
-            if (writeCapture (*session.getSource(), captureFile))
-                capturedClip = session.getSource().get();
+            if (writeCapture (*session.getOwnTrack(), captureFile))
+                capturedClip = session.getOwnTrack().get();
         }
         tree.setProperty ("captureFile", captureFile.getFullPathName(), nullptr);
-        tree.setProperty ("captureStart", (juce::int64) session.getSource()->startSample, nullptr);
+        tree.setProperty ("captureStart", (juce::int64) session.getOwnTrack()->startSample, nullptr);
         tree.setProperty ("captureDescription", session.getSourceDescription(), nullptr);
     }
 
@@ -527,6 +784,7 @@ void AlignMyTimeProcessor::setStateInformation (const void* data, int sizeInByte
 
     const auto tree = juce::ValueTree::fromXml (*xml);
     session.restoreFromValueTree (tree);
+    loadMissingExtraTracks();
 
     const juce::File audioFile (tree.getProperty ("audioFile").toString());
     if (audioFile != juce::File() && audioFile.existsAsFile())

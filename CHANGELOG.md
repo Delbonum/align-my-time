@@ -3,6 +3,16 @@
 Versionen nach [Semantic Versioning](https://semver.org/lang/de/): **MAJOR.MINOR.PATCH**.
 PATCH = Fehlerbehebungen, MINOR = neue Funktionen, MAJOR = inkompatible Änderungen (z. B. gespeicherte Projekte).
 
+## 1.3.0 – 2026-10-06
+
+### Neu
+- **Unsaubere Taps begradigen** in „Prüfen“: stufenloser Regler von „Aus“ bis 100 %. Die Marker werden zu einem gleichmäßigen Tempoverlauf gezogen. Einzelne verrutschte Taps werden so korrigiert, Tempoänderungen (z. B. ein Ritardando) bleiben erhalten. Die Einstellung ist nicht-destruktiv: Die getappten Marker bleiben gespeichert, „Aus“ (oder Doppelklick auf den Regler) stellt sie exakt wieder her. Von Hand gesetzte Marker bleiben, wo sie sind.
+  - Mit „An Transienten einrasten“ helfen die erkannten Anschläge (Hitpoints) mit: Marker auf einem passenden Anschlag bleiben dort. Taps, die so weit danebenlagen, dass sie nicht eingerastet sind, und Marker auf dem falschen Anschlag (Ghost-Note, Flam) landen auf dem tatsächlichen Schlag.
+- **Mehrspur** (z. B. alle Mikrofone einer Schlagzeugaufnahme): Weitere Spuren werden mit denselben Markern angepasst und bleiben phasengleich. Getappt, eingerastet und vorgehört wird auf der Summe aller Spuren.
+  - Mit ARA: Button „Mehrspur“ › Spuren des Projekts ankreuzen, auf denen Align My Time ebenfalls als ARA-Erweiterung läuft. „In dieser Spur ersetzen“ ersetzt dann auch dort.
+  - Überall (auch Standalone): weitere Audiodateien hinzufügen, oder mehrere Dateien auf einmal ins Fenster ziehen.
+  - „Als neue Spur“ schreibt eine WAV-Datei pro Spur, alle gleich lang und ab derselben Position. Die Kachel zieht alle Dateien auf einmal in die DAW.
+
 ## 1.2.1 – 2026-10-05
 
 ### Geändert

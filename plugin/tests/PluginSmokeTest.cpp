@@ -452,6 +452,149 @@ int main (int argc, char** argv)
         check (clicked.has_value() && std::abs (*clicked - 12.0) < 0.05, "swapped: Ctrl+click plays from there");
     }
 
+    std::printf ("11. Multitrack: two files of one recording aligned together\n");
+    {
+        // "Kick" is the take, "Overheads" the same take at half the level: after aligning, the
+        // overheads must still be exactly the kick at half the level (same warp, sample-aligned).
+        auto writeTrack = [&] (const juce::String& name, float gain) {
+            const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile (name + ".wav");
+            file.deleteFile();
+            std::unique_ptr<juce::OutputStream> stream (file.createOutputStream());
+            auto writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions {}.withSampleRate (rate).withNumChannels (1).withBitsPerSample (32)
+                                                                                  .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+            juce::AudioBuffer<float> buf (1, (int) take.left.size());
+            for (int i = 0; i < buf.getNumSamples(); ++i)
+                buf.setSample (0, i, gain * take.left[(size_t) i]);
+            writer->writeFromAudioSampleBuffer (buf, 0, buf.getNumSamples());
+            return file;
+        };
+        const auto kick = writeTrack ("amt-smoke-kick", 1.0f);
+        const auto overheads = writeTrack ("amt-smoke-overheads", 0.5f);
+
+        auto makeStandalone = [&] {
+            juce::AudioProcessor::setTypeOfNextNewPlugin (juce::AudioProcessor::wrapperType_Standalone);
+            auto p = std::make_unique<AlignMyTimeProcessor>();
+            juce::AudioProcessor::setTypeOfNextNewPlugin (juce::AudioProcessor::wrapperType_Undefined);
+            p->setRateAndBufferSizeDetails (rate, block);
+            p->prepareToPlay (rate, block);
+            return p;
+        };
+        auto waitForTracks = [&] (AlignMyTimeProcessor& p, int count) {
+            for (int i = 0; i < 200 && p.getSession().getNumTracks() < count; ++i)
+                pumpMessages (50);
+        };
+
+        auto multi = makeStandalone();
+        multi->addExtraFiles ({ kick, overheads });
+        waitForTracks (*multi, 2);
+        auto& s = multi->getSession();
+        check (s.getNumTracks() == 2 && s.getExtraTracks().size() == 1 && s.getExtraTracks()[0].name == "amt-smoke-overheads",
+               "first file is the track, the second one an extra track");
+        check (s.hasSource() && std::abs (s.getSource()->sampleAt (0, (int64_t) (take.downbeats[3] * rate) + 100)
+                                          - 1.5f * take.left[(size_t) (take.downbeats[3] * rate) + 100]) < 1.0e-4f,
+               "taps and preview work on the sum of all tracks");
+
+        s.beginTapping (0.0);
+        for (auto d : take.downbeats)
+            s.addTap (d + 0.02);
+        s.setStep (Step::review);
+        s.updateSettings ([] (SessionSettings& st) { st.method = AlignMethod::slices; });
+        s.startRender();
+        for (int i = 0; i < 600 && s.isRendering(); ++i)
+            pumpMessages (50);
+
+        const auto& rendered = s.getAlignedTracks();
+        check (rendered.size() == 2 && rendered[0].id.isEmpty() && rendered[1].name == "amt-smoke-overheads", "both tracks rendered");
+        if (rendered.size() == 2)
+        {
+            const auto& a = *rendered[0].clip;
+            const auto& b = *rendered[1].clip;
+            check (a.startSample == b.startSample && a.numSamples() == b.numSamples(), "rendered tracks start at the same sample and have the same length");
+            float worst = 0.0f;
+            for (int64_t i = 0; i < a.numSamples(); ++i)
+                worst = juce::jmax (worst, std::abs (b.channels[0][(size_t) i] - 0.5f * a.channels[0][(size_t) i]));
+            std::printf ("  largest difference overheads vs. 0.5 x kick: %g\n", (double) worst);
+            check (worst < 1.0e-5f, "tracks stay sample-exact in phase (slices)");
+        }
+
+        s.updateSettings ([] (SessionSettings& st) { st.method = AlignMethod::timeStretch; });
+        s.startRender();
+        for (int i = 0; i < 600 && s.isRendering(); ++i)
+            pumpMessages (50);
+        if (s.getAlignedTracks().size() == 2)
+        {
+            const auto& a = *s.getAlignedTracks()[0].clip;
+            const auto& b = *s.getAlignedTracks()[1].clip;
+            double dot = 0.0, aa = 0.0, bb = 0.0;
+            for (int64_t i = 0; i < a.numSamples(); ++i)
+            {
+                dot += a.channels[0][(size_t) i] * b.channels[0][(size_t) i];
+                aa += a.channels[0][(size_t) i] * a.channels[0][(size_t) i];
+                bb += b.channels[0][(size_t) i] * b.channels[0][(size_t) i];
+            }
+            const double correlation = dot / std::sqrt (aa * bb + 1.0e-12);
+            std::printf ("  correlation of the time-stretched tracks: %.5f\n", correlation);
+            check (a.numSamples() == b.numSamples() && correlation > 0.999, "time-stretched tracks stay in phase");
+        }
+
+        juce::MemoryBlock multiState;
+        multi->getStateInformation (multiState);
+        auto reopened = makeStandalone();
+        reopened->setStateInformation (multiState.getData(), (int) multiState.getSize());
+        waitForTracks (*reopened, 2);
+        check (reopened->getSession().getNumTracks() == 2, "extra track is reloaded with the project");
+
+        multi->removeExtraTrack (ExtraTrack::Kind::file, overheads.getFullPathName());
+        check (s.getNumTracks() == 1 && s.getSource() == s.getOwnTrack(), "removing the extra track leaves the own track alone");
+
+        std::printf ("12. Even out sloppy taps\n");
+        s.setStep (Step::tap);
+        s.setSnapToAttacks (false);
+        s.beginTapping (0.0);
+        std::mt19937 tapRng (5);
+        std::uniform_real_distribution<double> human (-0.006, 0.006);
+        for (size_t i = 0; i < take.downbeats.size(); ++i)
+            s.addTap (take.downbeats[i] + human (tapRng) + (i == 6 ? 0.06 : 0.0));
+
+        const auto raw = s.getMarkers();
+        s.setStraighten (1.0);
+        const auto even = s.getMarkers();
+        std::printf ("  sloppy tap: %.1f ms off, evened out: %.1f ms off\n", (raw[6].seconds - take.downbeats[6]) * 1000.0,
+                     (even[6].seconds - take.downbeats[6]) * 1000.0);
+        check (std::abs (even[6].seconds - take.downbeats[6]) < 0.02, "100 %: the sloppy tap is pulled back towards the beat");
+        check (std::abs (s.getStraightenShift (6)) > 0.03, "the shift is reported for the marker info");
+
+        s.setStraighten (0.5);
+        check (std::abs (s.getMarkers()[6].seconds - 0.5 * (raw[6].seconds + even[6].seconds)) < 1.0e-6, "50 % moves half the way");
+
+        AlignSession copy;
+        copy.restoreFromValueTree (s.toValueTree());
+        check (std::abs (copy.getSettings().straighten - 0.5) < 1.0e-9 && std::abs (copy.getMarkers()[6].seconds - s.getMarkers()[6].seconds) < 1.0e-6,
+               "strength is saved with the project, the tapped markers stay untouched");
+
+        s.setStraighten (0.0);
+        bool unchanged = true;
+        for (size_t i = 0; i < raw.size(); ++i)
+            unchanged = unchanged && std::abs (s.getMarkers()[i].seconds - raw[i].seconds) < 1.0e-12;
+        check (unchanged, "'Aus' gives back the markers exactly as tapped");
+
+        // With snapping on, the hitpoints guide the correction: a tap too late to snap ends up on the attack.
+        s.setSnapToAttacks (true);
+        s.beginTapping (0.0);
+        for (size_t i = 0; i < take.downbeats.size(); ++i)
+            s.addTap (take.downbeats[i] + (i == 6 ? 0.09 : 0.01));
+        const double missed = s.getMarkers()[6].seconds - take.downbeats[6];
+        s.setStraighten (1.0);
+        const double corrected = s.getMarkers()[6].seconds - take.downbeats[6];
+        std::printf ("  tap 90 ms late: %.1f ms off after snapping, %.2f ms after evening out with hitpoints\n", missed * 1000.0, corrected * 1000.0);
+        check (std::abs (missed) > 0.05 && std::abs (corrected) < 0.003 && s.getMarkers()[6].snappedToAttack,
+               "hitpoints: the badly missed tap lands on the actual attack");
+        s.setStraighten (0.0);
+
+        kick.deleteFile();
+        overheads.deleteFile();
+    }
+
     std::printf ("\n%s\n", failures == 0 ? "ALL OK" : "FAILURES");
     restored.reset();
     processor.reset();

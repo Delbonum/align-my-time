@@ -4,7 +4,7 @@ DAW plug-in and standalone app (VST3/AU, ARA 2, JUCE 8): tap along to a track, t
 
 ## Layout
 - `core/`: C++17, no JUCE. TempoMap, tap clean-up/Markers, OnsetDetector, WarpMap, Alignment (grid planning, TapUnit suggestion), Renderers (Signalsmith Stretch + attack splicing; slices + crossfade).
-- `plugin/Source/`: JUCE plug-in. `AlignSession` = message-thread model of the three steps; `PluginProcessor` = audio thread, non-ARA input recording (merged per host pass), MIDI taps, ARA retry; `PlaybackRenderer`/`SourceLoader`/`DocumentController` = ARA; `ui/` one file per page.
+- `plugin/Source/`: JUCE plug-in. `AlignSession` = message-thread model of the three steps; `PluginProcessor` = audio thread, non-ARA input recording (merged per host pass), MIDI taps, ARA retry; `PlaybackRenderer`/`SourceLoader`/`DocumentController` = ARA (the DocumentController also links the instances of a project for multitrack "replace in track"); `ui/` one file per page.
 - `tests/CoreTests.cpp`: framework-free core tests. `plugin/tests/PluginSmokeTest.cpp`: headless end-to-end test with a fake host; writes `docs/screenshots/*.png` when given a folder.
 
 ## Commands

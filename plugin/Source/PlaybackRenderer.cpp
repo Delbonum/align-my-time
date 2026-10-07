@@ -1,4 +1,5 @@
 #include "PlaybackRenderer.h"
+#include "DocumentController.h"
 
 namespace amt::plugin
 {
@@ -15,6 +16,19 @@ void PlaybackRenderer::prepareToPlay (double rate, int maximumSamplesPerBlock, i
     readers.clear();
     for (auto* region : getPlaybackRegions())
         readerFor (region->getAudioModification()->getAudioSource());
+
+    // Another instance may align this track along with its own: look up where it publishes.
+    auto* track = getTrack();
+    auto* controller = DocumentController::of (getDocumentController());
+    linkedReplacement.store (track != nullptr && controller != nullptr ? &controller->getLinkedReplacement (track) : nullptr);
+}
+
+juce::ARARegionSequence* PlaybackRenderer::getTrack() const
+{
+    for (auto* region : getPlaybackRegions())
+        if (auto* sequence = region->getRegionSequence())
+            return sequence;
+    return nullptr;
 }
 
 void PlaybackRenderer::releaseResources()
@@ -58,19 +72,21 @@ bool PlaybackRenderer::processBlock (juce::AudioBuffer<float>& buffer, juce::Aud
     }
 
     // "Replace in track": play the aligned audio instead of the events.
-    if (replacement != nullptr)
+    std::shared_ptr<const AudioClip> clip = replacement != nullptr ? replacement->get() : nullptr;
+    if (clip == nullptr)
+        if (auto* linked = linkedReplacement.load())
+            clip = linked->get();
+
+    if (clip != nullptr)
     {
-        if (auto clip = replacement->get())
+        for (int c = 0; c < buffer.getNumChannels(); ++c)
         {
-            for (int c = 0; c < buffer.getNumChannels(); ++c)
-            {
-                auto* out = buffer.getWritePointer (c);
-                const int sourceChannel = juce::jmin (c, clip->numChannels() - 1);
-                for (int i = 0; i < numSamples; ++i)
-                    out[i] = clip->sampleAt (sourceChannel, blockStart + i);
-            }
-            return true;
+            auto* out = buffer.getWritePointer (c);
+            const int sourceChannel = juce::jmin (c, clip->numChannels() - 1);
+            for (int i = 0; i < numSamples; ++i)
+                out[i] = clip->sampleAt (sourceChannel, blockStart + i);
         }
+        return true;
     }
 
     bool success = true;

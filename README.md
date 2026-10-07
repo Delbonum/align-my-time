@@ -3,7 +3,7 @@
 Ein DAW-Plugin (VST3 / AU, mit ARA 2) und eine Standalone-App, die eine frei eingespielte Spur aufs Projekttempo (oder ein frei eingegebenes Tempo) bringt, und zwar ohne Warp-Tabellen oder Hitpoint-Dialoge. Aktuelle Version: siehe [CHANGELOG.md](CHANGELOG.md).
 
 1. **Tappen:** Die ganze Spur einmal anhören und im Takt eine Taste drücken (Leertaste oder eine andere Tap-Taste, Mausklick oder MIDI-Fußschalter), auf jede Eins oder auf jede Zählzeit.
-2. **Prüfen:** Marker kontrollieren und verschieben. Die Tempokurve zeigt Ausreißer. Hier wählst du Time-Stretch oder Schneiden + Crossfade und hörst vorher/nachher an.
+2. **Prüfen:** Marker kontrollieren und verschieben. Die Tempokurve zeigt Ausreißer, „Unsaubere Taps begradigen“ gleicht sie auf Wunsch aus. Hier wählst du Time-Stretch oder Schneiden + Crossfade und hörst vorher/nachher an.
 3. **Rendern:** Ergebnis als neue Spur (WAV per Drag & Drop) oder direkt in der Spur ersetzen (nicht-destruktiv).
 
 | 1 · Tappen | 2 · Prüfen | 3 · Rendern |
@@ -30,6 +30,10 @@ Die Screenshots erzeugt der End-to-End-Test automatisch (siehe unten).
 **Zoom in „Prüfen“:** Mausrad (oder Pinch) zoomt, Shift+Mausrad scrollt, „Alles“ zeigt wieder die ganze Aufnahme.
 
 **Ziel-Tempo:** Ein Klick auf die Tempo-Anzeige oben rechts öffnet die Einstellung. Dort übernimmst du das Projekttempo oder gibst Tempo und Taktart von Hand ein.
+
+**Unsaubere Taps begradigen:** In „Prüfen“ zieht der Regler (Aus bis 100 %) die Marker zu einem gleichmäßigen Tempoverlauf. Einzelne verrutschte Taps werden korrigiert, Tempoänderungen bleiben erhalten. Ist „An Transienten einrasten“ an, entscheiden die erkannten Anschläge mit: Korrigierte Marker landen auf dem tatsächlichen Schlag, Marker auf einem passenden Anschlag bleiben, wo sie sind. Die getappten Marker bleiben dabei gespeichert: „Aus“ (Doppelklick auf den Regler) stellt sie exakt wieder her.
+
+**Mehrspur (z. B. Schlagzeug):** Über „Mehrspur“ kommen weitere Spuren dazu, die mit denselben Markern angepasst werden und phasengleich bleiben. Mit ARA kreuzt du dort die anderen Spuren an, auf denen Align My Time ebenfalls als ARA-Erweiterung läuft. „In dieser Spur ersetzen“ wirkt dann auf alle. Alternativ (und im Standalone) fügst du Audiodateien hinzu oder ziehst mehrere Dateien auf einmal ins Fenster. Getappt und eingerastet wird auf der Summe aller Spuren. „Als neue Spur“ schreibt eine Datei pro Spur, alle ab derselben Position. Für Schlagzeug ist „Schneiden + Verschieben“ die sicherste Wahl: Dann bleiben die Spuren sample-genau phasengleich.
 
 **Audiodatei statt Spur:** Mit „Datei laden …“ oder per Drag & Drop einer Audiodatei ins Fenster arbeitest du mit einer Datei statt mit der Spur. „Zurück zur Spur“ wechselt zurück.
 
@@ -63,7 +67,7 @@ cmake -S . -B build-core -DAMT_BUILD_PLUGIN=OFF && cmake --build build-core && c
 ### Tests
 
 - `tests/CoreTests.cpp` deckt Tempo-Map (inklusive Tempo- und Taktartwechsel), Tap-Bereinigung, Transienten-Einrasten, Warp-Map und beide Render-Verfahren ab. Gemessen wird, dass jeder Schlag nach dem Ausrichten auf dem Projektraster liegt (< 1 ms) und dass die Tonhöhe erhalten bleibt.
-- `plugin/tests/PluginSmokeTest.cpp` simuliert einen Host: Eine schwankend eingespielte Spur läuft durchs Plugin, ein „Fußschalter“ tappt per MIDI mit, danach folgen Rendern, Ersetzen in der Spur, Speichern und Laden. Mit einem Ordner als Argument speichert der Test die Screenshots: `xvfb-run ./build/plugin/AlignMyTimeSmokeTest docs/screenshots`.
+- `plugin/tests/PluginSmokeTest.cpp` simuliert einen Host: Eine schwankend eingespielte Spur läuft durchs Plugin, ein „Fußschalter“ tappt per MIDI mit, danach folgen Rendern, Ersetzen in der Spur, Speichern und Laden, Mehrspur (Phasengleichheit) und das Begradigen der Taps. Mit einem Ordner als Argument speichert der Test die Screenshots: `xvfb-run ./build/plugin/AlignMyTimeSmokeTest docs/screenshots`.
 
 ## Aufbau
 

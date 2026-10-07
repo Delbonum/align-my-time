@@ -40,6 +40,7 @@ private:
     juce::TextButton nudgeLeft, nudgeRight, addMarker, removeMarker, retap, barDown, barUp, unitBigger, unitSmaller;
     juce::TextButton applySuggestion;
     ToggleRow snap { tr ("An Transienten einrasten") };
+    juce::Slider straighten { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
 
     ChoiceCard stretchCard { tr ("Time-Stretch"), tr ("Jeder Takt wird gedehnt/gestaucht. Tonhöhe bleibt unverändert.") };
     ChoiceCard sliceCard { tr ("Schneiden + Verschieben"), tr ("An jedem Marker schneiden, aufs Raster schieben, Übergänge per Crossfade.") };
@@ -53,7 +54,7 @@ private:
 
     juce::TextButton back, next;
 
-    juce::Rectangle<int> leftColumn, middleColumn, rightColumn, footer, offsetBox, barRow, unitRow, mixRow, bannerRow;
+    juce::Rectangle<int> leftColumn, middleColumn, rightColumn, footer, offsetBox, straightenLabel, barRow, unitRow, mixRow, bannerRow;
     bool playWhenRendered = false;
     std::optional<double> playFromAfterRender;
 };

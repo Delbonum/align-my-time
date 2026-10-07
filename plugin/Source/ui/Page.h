@@ -30,6 +30,13 @@ public:
             confirmDiscard();
         };
         addAndMakeVisible (reload);
+
+        tracks.getProperties().set ("icon", "plus");
+        tracks.setTooltip (tr ("Weitere Spuren mit denselben Markern anpassen, z. B. alle Mikrofone einer Schlagzeugaufnahme. "
+                               "Alle Spuren werden gleich behandelt und bleiben phasengleich."));
+        tracks.setWantsKeyboardFocus (false);
+        tracks.onClick = [this] { showTracksMenu(); };
+        addAndMakeVisible (tracks);
         update();
     }
 
@@ -42,11 +49,13 @@ public:
             area.removeFromRight (8);
         }
         loadFile.setBounds (area.removeFromRight (150).withSizeKeepingCentre (150, 30));
+        area.removeFromRight (8);
+        tracks.setBounds (area.removeFromRight (140).withSizeKeepingCentre (140, 30));
     }
 
     void paint (juce::Graphics& g) override
     {
-        auto area = getLocalBounds().withRight (loadFile.getX() - 10);
+        auto area = getLocalBounds().withRight (tracks.getX() - 10);
 
         // Mode chip: where the audio comes from.
         const auto mode = processor.isUsingAudioFile() || processor.isStandalone() ? tr ("Datei")
@@ -76,6 +85,11 @@ public:
                                                                    : tr ("Aufnahme vom Spureingang");
             text = description + juce::String::fromUTF8 (" \xc2\xb7 ") + formatTime (clip->startSeconds())
                    + juce::String::fromUTF8 ("\xe2\x80\x93") + formatTime (clip->endSeconds());
+
+            const int extra = session.getNumTracks() - (session.getOwnTrack() != nullptr ? 1 : 0);
+            if (extra > 0)
+                text = description + " + " + juce::String (extra) + (extra == 1 ? tr (" weitere Spur") : tr (" weitere Spuren"))
+                       + tr (" (Summe)");
         }
         else if (processor.isStandalone())
             text = tr ("Lade eine Audiodatei – Button rechts oder einfach ins Fenster ziehen.");
@@ -85,6 +99,10 @@ public:
             text = tr ("● Aufnahme läuft – einfach mittappen");
         else
             text = withHostName (tr ("Spiele die Spur in Cubase ab – sie wird dabei aufgenommen."));
+
+        // This track is aligned by the instance on another track (multitrack).
+        if (const auto owner = processor.getLinkedByName(); owner.isNotEmpty() && session.getMarkers().empty())
+            text = tr ("Wird mit Spur") + utf8 (" „") + owner + utf8 ("“ ") + tr ("angepasst – Marker und Rendern dort.");
 
         g.setColour (colours::muted);
         g.setFont (uiFont (12.5f));
@@ -108,11 +126,69 @@ public:
         }
         reload.setVisible (! processor.isStandalone()
                            && (processor.usesARA() || processor.isUsingAudioFile() || processor.getSession().hasSource()));
+
+        const int count = processor.getSession().getNumTracks();
+        tracks.setButtonText (count > 1 ? tr ("Spuren") + " (" + juce::String (count) + ")" : tr ("Mehrspur"));
         resized();
         repaint();
     }
 
 private:
+    /** Which other tracks are aligned along: the project's tracks (ARA) and extra audio files. */
+    void showTracksMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader (tr ("Mit denselben Markern anpassen"));
+
+        const auto hostTracks = processor.getHostTracks();
+        if (processor.usesARA())
+        {
+            if (hostTracks.empty())
+                menu.addItem (tr ("Weitere Spuren erscheinen hier, wenn Align My Time auch auf ihnen läuft."), false, false, [] {});
+            for (const auto& t : hostTracks)
+            {
+                const auto label = t.linkedElsewhere.isNotEmpty() ? t.name + utf8 (" – ") + tr ("schon mit") + utf8 (" „") + t.linkedElsewhere + utf8 ("“")
+                                                                  : t.name;
+                menu.addItem (label, t.linked || t.linkedElsewhere.isEmpty(), t.linked,
+                              [safe = juce::Component::SafePointer<SourceStrip> (this), id = t.id, linked = t.linked] {
+                                  if (safe != nullptr)
+                                      safe->processor.setHostTrackLinked (id, ! linked);
+                              });
+            }
+            menu.addSeparator();
+        }
+
+        menu.addItem (tr ("Audiodateien hinzufügen …"), [safe = juce::Component::SafePointer<SourceStrip> (this)] {
+            if (safe != nullptr)
+                safe->chooseExtraFiles();
+        });
+
+        for (const auto& t : processor.getSession().getExtraTracks())
+        {
+            if (t.kind != ExtraTrack::Kind::file)
+                continue;
+            menu.addItem (tr ("Entfernen:") + " " + t.name + (t.clip == nullptr ? tr (" (wird geladen …)") : juce::String()),
+                          [safe = juce::Component::SafePointer<SourceStrip> (this), id = t.id] {
+                              if (safe != nullptr)
+                                  safe->processor.removeExtraTrack (ExtraTrack::Kind::file, id);
+                          });
+        }
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tracks));
+    }
+
+    void chooseExtraFiles()
+    {
+        chooser = std::make_unique<juce::FileChooser> (tr ("Weitere Spuren laden"), juce::File(), AlignMyTimeProcessor::audioFileWildcard());
+        juce::Component::SafePointer<SourceStrip> safe (this);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                                  | juce::FileBrowserComponent::canSelectMultipleItems,
+                              [safe] (const juce::FileChooser& fc) {
+                                  if (safe != nullptr && ! fc.getResults().isEmpty())
+                                      safe->processor.addExtraFiles (fc.getResults());
+                              });
+    }
+
     void chooseFile()
     {
         chooser = std::make_unique<juce::FileChooser> (tr ("Audiodatei laden"), juce::File(), AlignMyTimeProcessor::audioFileWildcard());
@@ -146,7 +222,7 @@ private:
     }
 
     AlignMyTimeProcessor& processor;
-    juce::TextButton loadFile, reload;
+    juce::TextButton loadFile, reload, tracks;
     std::unique_ptr<juce::FileChooser> chooser;
 };
 

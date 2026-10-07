@@ -37,8 +37,8 @@ private:
 
     juce::Rectangle<int> beforeCaption, afterCaption, leftArea, rightArea, footer, nameLabel;
     bool pendingAction = false;
-    juce::File exportedFile;
-    juce::String errorText;
+    juce::Array<juce::File> exportedFiles; ///< one per track
+    juce::String errorText, multitrackNote;
 };
 
 } // namespace amt::plugin::ui

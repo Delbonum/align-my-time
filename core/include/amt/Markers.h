@@ -68,4 +68,23 @@ std::vector<Marker> cleanUpTaps (const std::vector<double>& tapSeconds,
     +-windowSeconds. Returns how many markers were snapped. */
 int snapMarkersToAttacks (std::vector<Marker>& markers, const OnsetDetector& detector, double windowSeconds = 0.07);
 
+/** Pulls markers towards a smooth tempo curve, which evens out sloppy taps.
+
+    `grid` holds each marker's position on the project grid (e.g. in quarter notes), so time
+    signature changes and other grid units are handled. For every marker a robust local curve
+    through its neighbours (+-`neighbourhood`, the marker itself left out) predicts where it should
+    be; the marker moves `amount` (0..1) of the way there. A single bad tap therefore barely bends the
+    curve, and gradual tempo changes (ritardando) are kept. Manually placed markers stay where they
+    are but still guide their neighbours. Returns the new positions; the order is always kept.
+
+    With a `detector` the audio decides where it can: a marker resting on an attack that fits the
+    curve stays there (it is the actual beat). Markers without an attack, and clear outliers caught on
+    the wrong attack (ghost note, flam), aim at the clear attack closest to the predicted position
+    (within an eighth of the marker spacing, at most 25 ms), or at the curve where there is none.
+    Markers on an attack also guide their neighbours more than those without. `onAttack` (optional)
+    tells which markers ended up aimed at an attack. */
+std::vector<double> straightenMarkers (const std::vector<Marker>& markers, const std::vector<double>& grid,
+                                       double amount, int neighbourhood = 4, const OnsetDetector* detector = nullptr,
+                                       std::vector<bool>* onAttack = nullptr);
+
 } // namespace amt

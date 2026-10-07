@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace amt
 {
@@ -140,6 +141,142 @@ int snapMarkersToAttacks (std::vector<Marker>& markers, const OnsetDetector& det
         }
     }
     return snapped;
+}
+
+std::vector<double> straightenMarkers (const std::vector<Marker>& markers, const std::vector<double>& grid, double amount, int neighbourhood,
+                                       const OnsetDetector* detector, std::vector<bool>* onAttack)
+{
+    if (onAttack != nullptr)
+        onAttack->assign (markers.size(), false);
+
+    const auto n = markers.size();
+    std::vector<double> seconds;
+    for (const auto& m : markers)
+        seconds.push_back (m.seconds);
+
+    amount = std::clamp (amount, 0.0, 1.0);
+    if (n < 4 || grid.size() != n || amount <= 0.0 || neighbourhood < 2)
+        return seconds;
+
+    std::vector<double> robustness (n, 1.0);
+
+    // Weighted least-squares fit of time over grid position through the neighbours of marker i,
+    // evaluated at marker i. Near neighbours count more (tricube), outliers less (robustness).
+    // A parabola where there are neighbours on both sides, so a ritardando is followed without
+    // lagging behind; a line at the ends, where a parabola would extrapolate wildly.
+    auto predict = [&] (size_t i) -> std::optional<double> {
+        const auto from = (size_t) std::max<long> (0, (long) i - neighbourhood);
+        const auto to = std::min (n, i + (size_t) neighbourhood + 1);
+        const int size = i >= 2 && i + 2 < n ? 3 : 2;
+
+        double m[3][4] {}; // normal equations, right-hand side in the last column
+        int used = 0;
+        for (auto j = from; j < to; ++j)
+        {
+            const double d = std::abs ((double) j - (double) i) / (neighbourhood + 1);
+            const double w = j == i ? 0.0 : std::pow (1.0 - d * d * d, 3.0) * robustness[j];
+            if (w <= 0.0)
+                continue;
+            ++used;
+            const double x = grid[j] - grid[i];
+            const double powers[3] { 1.0, x, x * x };
+            for (int r = 0; r < size; ++r)
+            {
+                for (int c = 0; c < size; ++c)
+                    m[r][c] += w * powers[r] * powers[c];
+                m[r][3] += w * powers[r] * seconds[j];
+            }
+        }
+        if (used < size)
+            return std::nullopt;
+
+        // Gauss-Jordan with partial pivoting; centred on marker i, the constant term is the prediction.
+        for (int col = 0; col < size; ++col)
+        {
+            int pivot = col;
+            for (int r = col + 1; r < size; ++r)
+                if (std::abs (m[r][col]) > std::abs (m[pivot][col]))
+                    pivot = r;
+            if (std::abs (m[pivot][col]) < 1.0e-12)
+                return std::nullopt;
+            std::swap (m[pivot], m[col]);
+
+            for (int r = 0; r < size; ++r)
+            {
+                if (r == col)
+                    continue;
+                const double f = m[r][col] / m[col][col];
+                for (int c = col; c < size; ++c)
+                    m[r][c] -= f * m[col][c];
+                m[r][3] -= f * m[col][3];
+            }
+        }
+        return m[0][3] / m[0][0];
+    };
+
+    // Pass 1: how far each marker is off the curve its neighbours describe.
+    std::vector<double> residuals (n, 0.0);
+    for (size_t i = 0; i < n; ++i)
+        if (auto p = predict (i))
+            residuals[i] = seconds[i] - *p;
+
+    std::vector<double> magnitudes;
+    for (auto r : residuals)
+        magnitudes.push_back (std::abs (r));
+    const double scale = std::max (0.002, 6.0 * median (magnitudes));
+
+    // Bisquare: clear outliers stop guiding their neighbours. Hand-placed markers are trusted;
+    // with the audio at hand, markers resting on an attack are more reliable than those without.
+    for (size_t i = 0; i < n; ++i)
+    {
+        const double u = residuals[i] / scale;
+        const double confidence = detector != nullptr && ! markers[i].snappedToAttack ? 0.5 : 1.0;
+        robustness[i] = markers[i].origin == MarkerOrigin::manual ? 1.0 : confidence * (std::abs (u) < 1.0 ? std::pow (1.0 - u * u, 2.0) : 0.0);
+    }
+
+    // Pass 2: move towards the robust curve, or onto the attack found there.
+    std::vector<double> result (seconds);
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (markers[i].origin == MarkerOrigin::manual)
+            continue;
+        auto p = predict (i);
+        if (! p)
+            continue;
+
+        double target = *p;
+        const bool outlier = std::abs (residuals[i]) >= scale;
+        if (detector != nullptr && markers[i].snappedToAttack && ! outlier)
+        {
+            // Already on a plausible attack: that is the actual beat, better evidence than any curve.
+            target = seconds[i];
+            if (onAttack != nullptr)
+                (*onAttack)[i] = true;
+        }
+        else if (detector != nullptr)
+        {
+            // Tight window, so a neighbouring 16th or a ghost note is not mistaken for the beat.
+            double spacing = 1.0e9;
+            if (i > 0)
+                spacing = std::min (spacing, seconds[i] - seconds[i - 1]);
+            if (i + 1 < n)
+                spacing = std::min (spacing, seconds[i + 1] - seconds[i]);
+            if (auto attack = detector->findAttackNear (*p, std::clamp (spacing / 8.0, 0.002, 0.025)))
+            {
+                target = *attack;
+                if (onAttack != nullptr)
+                    (*onAttack)[i] = true;
+            }
+        }
+        result[i] = seconds[i] + amount * (target - seconds[i]);
+    }
+
+    // Never swap two markers.
+    for (size_t i = 1; i < n; ++i)
+        if (result[i] <= result[i - 1])
+            result[i] = result[i - 1] + std::max (0.001, 0.5 * (seconds[i] - seconds[i - 1]));
+
+    return result;
 }
 
 } // namespace amt
